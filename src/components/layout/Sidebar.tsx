@@ -32,7 +32,6 @@ const navigation = [
   { name: "Welcome Message", href: "/welcome", icon: MessageCircle },
   { name: "Standard Responses", href: "/responses", icon: HelpCircle },
   { name: "Sequences", href: "/sequences", icon: Sparkles },
-  { name: "Flows", href: "/flows", icon: GitBranch },
   { name: "Broadcasts", href: "/broadcasts", icon: Radio },
   { name: "Analytics", href: "/analytics", icon: TrendingUp },
   { name: "Settings", href: "/settings", icon: Settings },
