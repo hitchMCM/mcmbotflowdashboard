@@ -118,12 +118,12 @@ export default function Responses() {
       originalDataRef.current = JSON.stringify({
         name: selectedMessage.name,
         is_active: selectedMessage.is_active,
-        keywords: selectedMessage.keywords,
-        text_content: selectedMessage.text_content,
-        title: selectedMessage.title,
-        subtitle: selectedMessage.subtitle,
-        image_url: selectedMessage.image_url,
-        buttons: selectedMessage.buttons
+        keywords: selectedMessage.keywords || [],
+        text_content: selectedMessage.text_content || null,
+        title: selectedMessage.title || null,
+        subtitle: selectedMessage.subtitle || null,
+        image_url: selectedMessage.image_url || null,
+        buttons: selectedMessage.buttons || []
       });
       setHasChanges(false);
     }

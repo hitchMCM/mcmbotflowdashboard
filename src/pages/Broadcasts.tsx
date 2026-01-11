@@ -120,11 +120,11 @@ export default function Broadcasts() {
       originalDataRef.current = JSON.stringify({
         name: selectedMessage.name,
         is_active: selectedMessage.is_active,
-        text_content: selectedMessage.text_content,
-        title: selectedMessage.title,
-        subtitle: selectedMessage.subtitle,
-        image_url: selectedMessage.image_url,
-        buttons: selectedMessage.buttons
+        text_content: selectedMessage.text_content || null,
+        title: selectedMessage.title || null,
+        subtitle: selectedMessage.subtitle || null,
+        image_url: selectedMessage.image_url || null,
+        buttons: selectedMessage.buttons || []
       });
       setHasChanges(false);
     }
