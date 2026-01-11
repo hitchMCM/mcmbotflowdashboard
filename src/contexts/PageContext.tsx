@@ -3,11 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface Page {
   id: string;
-  fb_page_id: string;
+  facebook_page_id: string;
   name: string;
   avatar_url: string | null;
   is_active: boolean;
   subscribers_count: number;
+  access_token?: string | null;
 }
 
 interface PageContextType {
@@ -44,7 +45,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
         // Create a default demo page if table doesn't exist or is empty
         const demoPage: Page = {
           id: 'demo',
-          fb_page_id: 'demo',
+          facebook_page_id: 'demo',
           name: 'Demo Page',
           avatar_url: null,
           is_active: true,
@@ -60,11 +61,12 @@ export function PageProvider({ children }: { children: ReactNode }) {
       // Map data to Page interface
       const loadedPages: Page[] = (data || []).map((row: any) => ({
         id: row.id,
-        fb_page_id: row.fb_page_id,
+        facebook_page_id: row.facebook_page_id,
         name: row.name || row.page_name || 'Unnamed Page',
         avatar_url: row.avatar_url,
         is_active: row.is_active ?? true,
-        subscribers_count: row.subscribers_count || 0
+        subscribers_count: row.subscribers_count || 0,
+        access_token: row.access_token
       }));
       
       console.log('[PageContext] Mapped pages:', loadedPages);
@@ -73,7 +75,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
       if (loadedPages.length === 0) {
         const demoPage: Page = {
           id: 'demo',
-          fb_page_id: 'demo',
+          facebook_page_id: 'demo',
           name: 'Demo Page',
           avatar_url: null,
           is_active: true,
@@ -108,7 +110,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
       // Create a default demo page on any error
       const demoPage: Page = {
         id: 'demo',
-        fb_page_id: 'demo',
+        facebook_page_id: 'demo',
         name: 'Demo Page',
         avatar_url: null,
         is_active: true,

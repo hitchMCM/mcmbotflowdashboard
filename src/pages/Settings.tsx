@@ -47,11 +47,11 @@ const tabs = [
 interface Page {
   id: string;
   name: string;
-  fb_page_id: string;
+  facebook_page_id: string;
   avatar_url?: string;
   is_active: boolean;
   created_at?: string;
-  access_token_encrypted?: string | null;
+  access_token?: string | null;
 }
 
 export default function Settings() {
@@ -93,6 +93,13 @@ export default function Settings() {
       return;
     }
 
+    // Validate user ID
+    const userId = user?.id;
+    if (!userId) {
+      toast({ title: "❌ Error", description: "User not authenticated. Please log in again.", variant: "destructive" });
+      return;
+    }
+
     setAddingPage(true);
     try {
       // Create the new page with user_id and token
@@ -100,15 +107,18 @@ export default function Settings() {
         .from('pages')
         .insert({
           name: newPageName.trim(),
-          fb_page_id: newPageId.trim(),
-          access_token_encrypted: newPageToken.trim() || null,
-          user_id: user?.id || '00000000-0000-0000-0000-000000000000',
+          facebook_page_id: newPageId.trim(),
+          access_token: newPageToken.trim() || null,
+          user_id: userId,
           is_active: true
         })
         .select()
         .single();
 
-      if (pageError) throw pageError;
+      if (pageError) {
+        console.error('Page creation error:', pageError);
+        throw pageError;
+      }
 
       // If cloning configuration from another page
       if (configOption === "clone" && cloneFromPageId) {
@@ -152,9 +162,10 @@ export default function Settings() {
       setConfigOption("standard");
       setCloneFromPageId("");
       await refreshPages();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding page:', error);
-      toast({ title: "❌ Error", description: "Failed to create page", variant: "destructive" });
+      const errorMessage = error?.message || error?.details || "Failed to create page";
+      toast({ title: "❌ Error", description: errorMessage, variant: "destructive" });
     } finally {
       setAddingPage(false);
     }
@@ -163,7 +174,7 @@ export default function Settings() {
   const handleEditPage = (page: Page) => {
     setEditingPage(page);
     setEditPageName(page.name);
-    setEditPageToken(page.access_token_encrypted || "");
+    setEditPageToken(page.access_token || "");
     setShowEditToken(false);
     setShowEditDialog(true);
   };
@@ -177,7 +188,7 @@ export default function Settings() {
         .from('pages')
         .update({
           name: editPageName.trim(),
-          access_token_encrypted: editPageToken.trim() || null,
+          access_token: editPageToken.trim() || null,
         })
         .eq('id', editingPage.id);
 
@@ -356,7 +367,7 @@ export default function Settings() {
                               </div>
                               <div>
                                 <p className="font-medium">{page.name}</p>
-                                <p className="text-sm text-muted-foreground">ID: {page.fb_page_id}</p>
+                                <p className="text-sm text-muted-foreground">ID: {page.facebook_page_id}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -364,7 +375,7 @@ export default function Settings() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(page.fb_page_id);
+                                  navigator.clipboard.writeText(page.facebook_page_id);
                                   toast({ title: "📋 Copied!", description: "Page ID copied to clipboard" });
                                 }}
                                 title="Copy Page ID"
@@ -398,11 +409,11 @@ export default function Settings() {
                           <div className="flex items-center gap-2 pl-13">
                             <Key className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">Token:</span>
-                            {page.access_token_encrypted ? (
+                            {page.access_token ? (
                               <>
                                 <code className="text-xs bg-black/20 px-2 py-1 rounded font-mono flex-1 truncate">
                                   {visibleTokens.has(page.id) 
-                                    ? page.access_token_encrypted 
+                                    ? page.access_token 
                                     : '••••••••••••••••••••••••••••••••'}
                                 </code>
                                 <Button
@@ -419,7 +430,7 @@ export default function Settings() {
                                   size="icon"
                                   className="h-7 w-7"
                                   onClick={() => {
-                                    navigator.clipboard.writeText(page.access_token_encrypted || '');
+                                    navigator.clipboard.writeText(page.access_token || '');
                                     toast({ title: "📋 Copied!", description: "Token copied to clipboard" });
                                   }}
                                   title="Copy token"
@@ -609,7 +620,7 @@ export default function Settings() {
             <div className="space-y-2">
               <Label>Page ID</Label>
               <Input
-                value={editingPage?.fb_page_id || ''}
+                value={editingPage?.facebook_page_id || ''}
                 disabled
                 className="bg-white/5 border-white/10 opacity-50"
               />

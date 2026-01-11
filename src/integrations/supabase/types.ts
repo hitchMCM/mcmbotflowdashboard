@@ -343,45 +343,36 @@ export type Database = {
       }
       pages: {
         Row: {
-          access_token_encrypted: string | null
-          active_flows_count: number | null
+          access_token: string | null
           avatar_url: string | null
-          cover_url: string | null
           created_at: string
-          fb_page_id: string
+          facebook_page_id: string
           id: string
           is_active: boolean | null
-          last_activity_at: string | null
           name: string
-          subscribers_count: number | null
+          updated_at: string | null
           user_id: string
         }
         Insert: {
-          access_token_encrypted?: string | null
-          active_flows_count?: number | null
+          access_token?: string | null
           avatar_url?: string | null
-          cover_url?: string | null
           created_at?: string
-          fb_page_id: string
+          facebook_page_id: string
           id?: string
           is_active?: boolean | null
-          last_activity_at?: string | null
           name: string
-          subscribers_count?: number | null
+          updated_at?: string | null
           user_id: string
         }
         Update: {
-          access_token_encrypted?: string | null
-          active_flows_count?: number | null
+          access_token?: string | null
           avatar_url?: string | null
-          cover_url?: string | null
           created_at?: string
-          fb_page_id?: string
+          facebook_page_id?: string
           id?: string
           is_active?: boolean | null
-          last_activity_at?: string | null
           name?: string
-          subscribers_count?: number | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
