@@ -30,12 +30,21 @@ export function PageProvider({ children }: { children: ReactNode }) {
 
   const loadPages = async () => {
     console.log('[PageContext] Loading pages from Supabase...');
+    
+    // Timeout de 5 secondes max
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), 5000)
+    );
+    
     try {
-      // Charger toutes les pages
-      const { data, error } = await supabase
+      // Charger toutes les pages avec timeout
+      const fetchPromise = supabase
         .from('pages')
         .select('*')
         .order('name');
+      
+      const result = await Promise.race([fetchPromise, timeoutPromise]) as any;
+      const { data, error } = result;
 
       console.log('[PageContext] Supabase response - data:', data);
       console.log('[PageContext] Supabase response - error:', error);
@@ -107,7 +116,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
       setCurrentPage(loadedPages[0]);
     } catch (error) {
       console.error('Error loading pages:', error);
-      // Create a default demo page on any error
+      // Create a default demo page on any error (including timeout)
       const demoPage: Page = {
         id: 'demo',
         facebook_page_id: 'demo',
@@ -116,9 +125,10 @@ export function PageProvider({ children }: { children: ReactNode }) {
         is_active: true,
         subscribers_count: 0
       };
-      console.log('[PageContext] Exception caught, using demo page');
+      console.log('[PageContext] Exception caught (timeout or error), using demo page');
       setPages([demoPage]);
       setCurrentPage(demoPage);
+      setLoading(false);
     } finally {
       console.log('[PageContext] Loading complete');
       setLoading(false);
