@@ -194,13 +194,34 @@ export default function Configuration() {
   };
 
   const handleSave = async (category: MessageCategory) => {
-    if (!currentPage?.id) return;
+    if (!currentPage?.id) {
+      toast({
+        title: "❌ Error",
+        description: "No page selected. Please select a page first.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Skip demo page
+    if (currentPage.id === 'demo') {
+      toast({
+        title: "⚠️ Demo Mode",
+        description: "Cannot save configuration for demo page. Please create a real page first.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setSaving(true);
     try {
       const config = triggerConfigs[category];
       
-      await upsertConfig({
+      console.log('[Configuration] Saving config for', category);
+      console.log('[Configuration] Page ID:', currentPage.id);
+      console.log('[Configuration] Config:', JSON.stringify(config, null, 2));
+      
+      const result = await upsertConfig({
         page_id: currentPage.id,
         category: category,
         name: `${CATEGORY_LABELS[category]} Config`,
@@ -211,6 +232,8 @@ export default function Configuration() {
         scheduled_time: config.scheduled_time,
         selected_message_ids: config.selected_message_ids,
       });
+      
+      console.log('[Configuration] Save result:', result);
       
       // Update original reference after successful save
       const currentOriginal = originalConfigsRef.current ? JSON.parse(originalConfigsRef.current) : {};
@@ -228,10 +251,13 @@ export default function Configuration() {
         title: "✅ Configuration saved!",
         description: `${CATEGORY_LABELS[category]} trigger settings updated.`
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[Configuration] Save error:', error);
+      console.error('[Configuration] Error details:', JSON.stringify(error, null, 2));
+      const errorMessage = error?.message || error?.details || error?.hint || JSON.stringify(error) || "Unable to save configuration.";
       toast({
         title: "❌ Error",
-        description: "Unable to save configuration.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {

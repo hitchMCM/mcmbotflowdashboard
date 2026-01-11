@@ -377,6 +377,71 @@ export type Database = {
         }
         Relationships: []
       }
+      page_configs: {
+        Row: {
+          id: string
+          page_id: string
+          category: string
+          name: string
+          selected_message_ids: string[] | null
+          selection_mode: string | null
+          fixed_message_id: string | null
+          messages_count: number | null
+          delay_hours: number[] | null
+          scheduled_time: string | null
+          scheduled_date: string | null
+          trigger_keywords: string[] | null
+          is_enabled: boolean | null
+          times_triggered: number | null
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          page_id: string
+          category: string
+          name: string
+          selected_message_ids?: string[] | null
+          selection_mode?: string | null
+          fixed_message_id?: string | null
+          messages_count?: number | null
+          delay_hours?: number[] | null
+          scheduled_time?: string | null
+          scheduled_date?: string | null
+          trigger_keywords?: string[] | null
+          is_enabled?: boolean | null
+          times_triggered?: number | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          page_id?: string
+          category?: string
+          name?: string
+          selected_message_ids?: string[] | null
+          selection_mode?: string | null
+          fixed_message_id?: string | null
+          messages_count?: number | null
+          delay_hours?: number[] | null
+          scheduled_time?: string | null
+          scheduled_date?: string | null
+          trigger_keywords?: string[] | null
+          is_enabled?: boolean | null
+          times_triggered?: number | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_configs_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscribers: {
         Row: {
           avatar_url: string | null

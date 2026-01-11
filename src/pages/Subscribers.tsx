@@ -8,17 +8,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useSubscribers } from "@/hooks/useSupabase";
+import { usePage } from "@/contexts/PageContext";
 import { useState } from "react";
 
 export default function Subscribers() {
-  const { subscribers, loading, error, refetch, getStats } = useSubscribers();
+  const { currentPage } = usePage();
+  const { subscribers, loading, error, refetch, getStats } = useSubscribers(currentPage?.id);
   const [searchTerm, setSearchTerm] = useState("");
   const stats = getStats();
 
   const filteredSubscribers = subscribers.filter(sub => 
-    sub.name_complet?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sub.psid?.includes(searchTerm) ||
-    sub.first_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    sub.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    sub.facebook_psid?.includes(searchTerm)
   );
 
   const formatDate = (dateString: string) => {
@@ -92,7 +93,7 @@ export default function Subscribers() {
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Subscriber</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">PSID</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Subscribed</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Messages</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Last Message</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
                 </tr>
@@ -109,21 +110,19 @@ export default function Subscribers() {
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={sub.profile_pic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${sub.psid}`} />
-                          <AvatarFallback>{(sub.name_complet || sub.first_name || 'U')[0]}</AvatarFallback>
+                          <AvatarImage src={sub.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${sub.facebook_psid}`} />
+                          <AvatarFallback>{(sub.full_name || 'U')[0]}</AvatarFallback>
                         </Avatar>
-                        <span className="font-medium">{sub.name_complet || `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || 'Unknown User'}</span>
+                        <span className="font-medium">{sub.full_name || 'Unknown User'}</span>
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <code className="text-xs bg-white/10 px-2 py-1 rounded">{sub.psid}</code>
+                      <code className="text-xs bg-white/10 px-2 py-1 rounded">{sub.facebook_psid}</code>
                     </td>
                     <td className="py-4 px-4 text-muted-foreground">{formatDate(sub.subscribed_at)}</td>
                     <td className="py-4 px-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-primary">↓{sub.total_messages_received}</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-success">↑{sub.total_messages_sent}</span>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        {sub.last_message_at ? formatDate(sub.last_message_at) : 'No messages'}
                       </div>
                     </td>
                     <td className="py-4 px-4">

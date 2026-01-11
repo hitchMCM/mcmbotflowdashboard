@@ -218,30 +218,84 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
 
   const upsertConfig = async (config: PageConfigInsert): Promise<PageConfig | null> => {
     try {
-      // Use RPC function for upsert
-      const { data, error: rpcError } = await supabase.rpc('upsert_page_config', {
-        p_page_id: config.page_id,
-        p_category: config.category,
-        p_name: config.name,
-        p_selected_message_ids: config.selected_message_ids || null,
-        p_selection_mode: config.selection_mode || 'random',
-        p_fixed_message_id: config.fixed_message_id || null,
-        p_trigger_keywords: config.trigger_keywords || null,
-        p_delay_hours: config.delay_hours || null,
-        p_scheduled_time: config.scheduled_time || null,
-        p_messages_count: config.messages_count || 1,
-        p_is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
-      });
+      console.log('[usePageConfigs] Upserting config:', config);
+      
+      // First, try to find existing config
+      const { data: existing, error: selectError } = await supabase
+        .from('page_configs')
+        .select('id')
+        .eq('page_id', config.page_id)
+        .eq('category', config.category)
+        .eq('name', config.name)
+        .maybeSingle();
+      
+      if (selectError) {
+        console.error('[usePageConfigs] Select error:', selectError);
+        throw selectError;
+      }
 
-      if (rpcError) throw rpcError;
+      let resultId: string;
 
+      if (existing?.id) {
+        // Update existing config
+        console.log('[usePageConfigs] Updating existing config:', existing.id);
+        const { error: updateError } = await supabase
+          .from('page_configs')
+          .update({
+            selected_message_ids: config.selected_message_ids || [],
+            selection_mode: config.selection_mode || 'random',
+            fixed_message_id: config.fixed_message_id || null,
+            trigger_keywords: config.trigger_keywords || [],
+            delay_hours: config.delay_hours || [],
+            scheduled_time: config.scheduled_time || null,
+            messages_count: config.messages_count || 1,
+            is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+        
+        if (updateError) {
+          console.error('[usePageConfigs] Update error:', updateError);
+          throw updateError;
+        }
+        resultId = existing.id;
+      } else {
+        // Insert new config
+        console.log('[usePageConfigs] Inserting new config');
+        const { data: inserted, error: insertError } = await supabase
+          .from('page_configs')
+          .insert({
+            page_id: config.page_id,
+            category: config.category,
+            name: config.name,
+            selected_message_ids: config.selected_message_ids || [],
+            selection_mode: config.selection_mode || 'random',
+            fixed_message_id: config.fixed_message_id || null,
+            trigger_keywords: config.trigger_keywords || [],
+            delay_hours: config.delay_hours || [],
+            scheduled_time: config.scheduled_time || null,
+            messages_count: config.messages_count || 1,
+            is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
+          })
+          .select('id')
+          .single();
+        
+        if (insertError) {
+          console.error('[usePageConfigs] Insert error:', insertError);
+          throw insertError;
+        }
+        resultId = inserted.id;
+      }
+
+      console.log('[usePageConfigs] Config saved successfully:', resultId);
+      
       // Refetch to get the full config
       await fetchConfigs();
       
-      return configs.find(c => c.id === data) || null;
-    } catch (err) {
-      console.error('Error upserting config:', err);
-      return null;
+      return configs.find(c => c.id === resultId) || null;
+    } catch (err: any) {
+      console.error('[usePageConfigs] Error upserting config:', err);
+      throw err; // Re-throw to let caller handle it
     }
   };
 

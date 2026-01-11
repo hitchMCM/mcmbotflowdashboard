@@ -4,26 +4,23 @@ import { supabase } from '@/integrations/supabase/client';
 // Types basés sur la nouvelle structure Supabase
 export interface Subscriber {
   id: string;
-  facebook_id: string;
-  psid: string;
-  name_complet: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  profile_pic: string | null;
-  locale: string | null;
-  timezone: number | null;
-  gender: string | null;
-  is_active: boolean;
-  is_subscribed: boolean;
+  page_id: string;
+  facebook_psid: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_active: boolean | null;
   subscribed_at: string;
-  unsubscribed_at: string | null;
-  tags: string[];
-  custom_fields: Record<string, unknown>;
-  last_interaction: string | null;
-  total_messages_received: number;
-  total_messages_sent: number;
-  created_at: string;
-  updated_at: string;
+  last_message_at: string | null;
+  flow_progress: number | null;
+  flow_total_steps: number | null;
+  // Aliases pour compatibilité avec l'UI existante
+  psid?: string;
+  name_complet?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  profile_pic?: string | null;
+  total_messages_received?: number;
+  total_messages_sent?: number;
 }
 
 export interface WelcomeMessage {
@@ -292,7 +289,7 @@ export function useAllSequenceClicks() {
 // ============================================
 // SUBSCRIBERS HOOK
 // ============================================
-export function useSubscribers() {
+export function useSubscribers(pageId?: string | null) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -300,10 +297,17 @@ export function useSubscribers() {
   const fetchSubscribers = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('subscribers')
         .select('*')
         .order('subscribed_at', { ascending: false });
+      
+      // Filtrer par page_id si fourni
+      if (pageId) {
+        query = query.eq('page_id', pageId);
+      }
+      
+      const { data, error } = await query;
       
       if (error) throw error;
       setSubscribers((data as Subscriber[]) || []);
@@ -312,7 +316,7 @@ export function useSubscribers() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageId]);
 
   useEffect(() => { fetchSubscribers(); }, [fetchSubscribers]);
 
