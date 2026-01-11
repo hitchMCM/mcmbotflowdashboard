@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor } from "lucide-react";
+import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { usePage } from "@/contexts/PageContext";
@@ -51,6 +51,7 @@ interface Page {
   avatar_url?: string;
   is_active: boolean;
   created_at?: string;
+  access_token_encrypted?: string | null;
 }
 
 export default function Settings() {
@@ -64,9 +65,22 @@ export default function Settings() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newPageName, setNewPageName] = useState("");
   const [newPageId, setNewPageId] = useState("");
+  const [newPageToken, setNewPageToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
   const [configOption, setConfigOption] = useState<"standard" | "clone">("standard");
   const [cloneFromPageId, setCloneFromPageId] = useState<string>("");
   const [addingPage, setAddingPage] = useState(false);
+  
+  // Edit page dialog
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingPage, setEditingPage] = useState<Page | null>(null);
+  const [editPageName, setEditPageName] = useState("");
+  const [editPageToken, setEditPageToken] = useState("");
+  const [showEditToken, setShowEditToken] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  
+  // Token visibility for page list
+  const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   
   // Delete page dialog
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -81,12 +95,13 @@ export default function Settings() {
 
     setAddingPage(true);
     try {
-      // Create the new page with user_id
+      // Create the new page with user_id and token
       const { data: newPage, error: pageError } = await supabase
         .from('pages')
         .insert({
           name: newPageName.trim(),
           fb_page_id: newPageId.trim(),
+          access_token_encrypted: newPageToken.trim() || null,
           user_id: user?.id || '00000000-0000-0000-0000-000000000000',
           is_active: true
         })
@@ -132,6 +147,8 @@ export default function Settings() {
       setShowAddDialog(false);
       setNewPageName("");
       setNewPageId("");
+      setNewPageToken("");
+      setShowToken(false);
       setConfigOption("standard");
       setCloneFromPageId("");
       await refreshPages();
@@ -141,6 +158,53 @@ export default function Settings() {
     } finally {
       setAddingPage(false);
     }
+  };
+
+  const handleEditPage = (page: Page) => {
+    setEditingPage(page);
+    setEditPageName(page.name);
+    setEditPageToken(page.access_token_encrypted || "");
+    setShowEditToken(false);
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPage) return;
+
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from('pages')
+        .update({
+          name: editPageName.trim(),
+          access_token_encrypted: editPageToken.trim() || null,
+        })
+        .eq('id', editingPage.id);
+
+      if (error) throw error;
+
+      toast({ title: "✅ Saved!", description: `Page "${editPageName}" updated` });
+      setShowEditDialog(false);
+      setEditingPage(null);
+      await refreshPages();
+    } catch (error) {
+      console.error('Error updating page:', error);
+      toast({ title: "❌ Error", description: "Failed to update page", variant: "destructive" });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const toggleTokenVisibility = (pageId: string) => {
+    setVisibleTokens(prev => {
+      const next = new Set(prev);
+      if (next.has(pageId)) {
+        next.delete(pageId);
+      } else {
+        next.add(pageId);
+      }
+      return next;
+    });
   };
 
   const handleDeletePage = async () => {
@@ -284,38 +348,88 @@ export default function Settings() {
                     
                     <div className="space-y-3">
                       {pages.map((page) => (
-                        <div key={page.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-primary flex items-center justify-center">
-                              <Globe className="h-5 w-5 text-white" />
+                        <div key={page.id} className="p-4 rounded-xl bg-white/5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-gradient-primary flex items-center justify-center">
+                                <Globe className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <p className="font-medium">{page.name}</p>
+                                <p className="text-sm text-muted-foreground">ID: {page.fb_page_id}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium">{page.name}</p>
-                              <p className="text-sm text-muted-foreground">ID: {page.fb_page_id}</p>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(page.fb_page_id);
+                                  toast({ title: "📋 Copied!", description: "Page ID copied to clipboard" });
+                                }}
+                                title="Copy Page ID"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEditPage(page)}
+                                title="Edit page"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  setPageToDelete(page);
+                                  setShowDeleteDialog(true);
+                                }}
+                                title="Delete page"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                navigator.clipboard.writeText(page.fb_page_id);
-                                toast({ title: "📋 Copied!", description: "Page ID copied to clipboard" });
-                              }}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => {
-                                setPageToDelete(page);
-                                setShowDeleteDialog(true);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          
+                          {/* Token display */}
+                          <div className="flex items-center gap-2 pl-13">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">Token:</span>
+                            {page.access_token_encrypted ? (
+                              <>
+                                <code className="text-xs bg-black/20 px-2 py-1 rounded font-mono flex-1 truncate">
+                                  {visibleTokens.has(page.id) 
+                                    ? page.access_token_encrypted 
+                                    : '••••••••••••••••••••••••••••••••'}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => toggleTokenVisibility(page.id)}
+                                  title={visibleTokens.has(page.id) ? "Hide token" : "Show token"}
+                                >
+                                  {visibleTokens.has(page.id) ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(page.access_token_encrypted || '');
+                                    toast({ title: "📋 Copied!", description: "Token copied to clipboard" });
+                                  }}
+                                  title="Copy token"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-yellow-500">Not configured - click edit to add</span>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -372,6 +486,33 @@ export default function Settings() {
               />
               <p className="text-xs text-muted-foreground">
                 Find this in your Facebook Page settings → About → Page ID
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                Page Access Token
+              </Label>
+              <div className="relative">
+                <Input
+                  type={showToken ? "text" : "password"}
+                  placeholder="EAAxxxxx..."
+                  value={newPageToken}
+                  onChange={(e) => setNewPageToken(e.target.value)}
+                  className="bg-white/5 border-white/10 pr-10 font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  onClick={() => setShowToken(!showToken)}
+                >
+                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Get this from Facebook Developer Portal → Your App → Page Access Token
               </p>
             </div>
             <div className="space-y-2">
@@ -445,6 +586,76 @@ export default function Settings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Page Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="glass border-white/10">
+          <DialogHeader>
+            <DialogTitle>Edit Page</DialogTitle>
+            <DialogDescription>
+              Update page name and access token
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Page Name</Label>
+              <Input
+                placeholder="My Facebook Page"
+                value={editPageName}
+                onChange={(e) => setEditPageName(e.target.value)}
+                className="bg-white/5 border-white/10"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Page ID</Label>
+              <Input
+                value={editingPage?.fb_page_id || ''}
+                disabled
+                className="bg-white/5 border-white/10 opacity-50"
+              />
+              <p className="text-xs text-muted-foreground">
+                Page ID cannot be changed
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                Page Access Token
+              </Label>
+              <div className="relative">
+                <Input
+                  type={showEditToken ? "text" : "password"}
+                  placeholder="EAAxxxxx..."
+                  value={editPageToken}
+                  onChange={(e) => setEditPageToken(e.target.value)}
+                  className="bg-white/5 border-white/10 pr-10 font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  onClick={() => setShowEditToken(!showEditToken)}
+                >
+                  {showEditToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to keep the existing token, or paste a new one to update
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)} className="border-white/10">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={savingEdit} className="bg-gradient-primary">
+              {savingEdit && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
