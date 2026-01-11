@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -15,6 +14,11 @@ import {
   Globe,
   MessageCircle,
   HelpCircle,
+  Sliders,
+  MessageSquare,
+  Zap,
+  Clock,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,27 +29,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
+import { usePage } from "@/contexts/PageContext";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Configuration", href: "/configuration", icon: Sliders },
   { name: "Subscribers", href: "/subscribers", icon: Users },
-  { name: "Welcome Message", href: "/welcome", icon: MessageCircle },
-  { name: "Standard Responses", href: "/responses", icon: HelpCircle },
-  { name: "Sequences", href: "/sequences", icon: Sparkles },
-  { name: "Broadcasts", href: "/broadcasts", icon: Radio },
+  { name: "Welcome", href: "/welcome", icon: MessageSquare },
+  { name: "Standard Reply", href: "/responses", icon: Zap },
+  { name: "Sequences", href: "/sequences", icon: Clock },
+  { name: "Broadcasts", href: "/broadcasts", icon: Megaphone },
   { name: "Analytics", href: "/analytics", icon: TrendingUp },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-const mockPages = [
-  { id: "1", name: "Career Hub", avatar: "https://api.dicebear.com/7.x/shapes/svg?seed=career" },
-  { id: "2", name: "Tech News", avatar: "https://api.dicebear.com/7.x/shapes/svg?seed=tech" },
-  { id: "3", name: "Daily Tips", avatar: "https://api.dicebear.com/7.x/shapes/svg?seed=tips" },
-];
-
 export function Sidebar() {
   const location = useLocation();
-  const [selectedPage, setSelectedPage] = useState(mockPages[0]);
+  const { currentPage, pages, setCurrentPage, loading } = usePage();
+
+  // Debug log
+  console.log('[Sidebar] currentPage:', currentPage, 'pages:', pages, 'loading:', loading);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -78,22 +81,22 @@ export function Sidebar() {
           <DropdownMenuTrigger className="w-full">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={selectedPage.avatar} />
-                <AvatarFallback>{selectedPage.name[0]}</AvatarFallback>
+                <AvatarImage src={currentPage?.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${currentPage?.name}`} />
+                <AvatarFallback>{currentPage?.name?.[0] || 'P'}</AvatarFallback>
               </Avatar>
-              <span className="flex-1 text-left text-sm font-medium truncate">{selectedPage.name}</span>
+              <span className="flex-1 text-left text-sm font-medium truncate">{currentPage?.name || 'Select Page'}</span>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56 glass border-white/10">
-            {mockPages.map((page) => (
+            {pages.map((page) => (
               <DropdownMenuItem
                 key={page.id}
-                onClick={() => setSelectedPage(page)}
+                onClick={() => setCurrentPage(page)}
                 className="cursor-pointer focus:bg-white/10"
               >
                 <Avatar className="h-6 w-6 mr-2">
-                  <AvatarImage src={page.avatar} />
+                  <AvatarImage src={page.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${page.name}`} />
                   <AvatarFallback>{page.name[0]}</AvatarFallback>
                 </Avatar>
                 <span>{page.name}</span>

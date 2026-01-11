@@ -62,6 +62,51 @@
     --background: 240 10% 4%;
     --foreground: 0 0% 100%;
   }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+
+    --card: 0 0% 98%;
+    --card-foreground: 240 10% 4%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+
+    --primary: 187 93% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 262 83% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 5% 92%;
+    --muted-foreground: 240 5% 45%;
+
+    --accent: 262 83% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --success: 160 84% 35%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 0%;
+
+    --destructive: 349 89% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 5% 85%;
+    --input: 240 5% 92%;
+    --ring: 187 93% 35%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 10% 4%;
+    --sidebar-primary: 187 93% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 262 83% 50%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 5% 90%;
+    --sidebar-ring: 187 93% 35%;
+  }
 }
 
 @layer base {
@@ -71,8 +116,26 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    background: linear-gradient(135deg, #0A0A0F 0%, #12121A 100%);
     min-height: 100vh;
+  }
+
+  /* Dark theme background */
+  html.dark body {
+    background: linear-gradient(135deg, #0A0A0F 0%, #12121A 100%);
+  }
+
+  /* Light theme background */
+  html.light body {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  }
+
+  /* Light mode glass adjustments */
+  html.light .glass {
+    @apply bg-black/5 border-black/10;
+  }
+
+  html.light .glass-strong {
+    @apply bg-black/10 border-black/20;
   }
 }
 

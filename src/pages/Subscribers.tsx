@@ -68,7 +68,7 @@ export default function Subscribers() {
 
         {error && (
           <GlassCard hover={false} className="p-4 border-destructive/50">
-            <p className="text-destructive">Erreur: {error}</p>
+            <p className="text-destructive">Error: {error}</p>
           </GlassCard>
         )}
 
@@ -76,13 +76,13 @@ export default function Subscribers() {
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <span className="ml-3 text-muted-foreground">Chargement des abonnés...</span>
+              <span className="ml-3 text-muted-foreground">Loading subscribers...</span>
             </div>
           ) : filteredSubscribers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mb-4 opacity-50" />
-              <p>Aucun abonné trouvé</p>
-              {searchTerm && <p className="text-sm">Essayez une autre recherche</p>}
+              <p>No subscribers found</p>
+              {searchTerm && <p className="text-sm">Try another search</p>}
             </div>
           ) : (
           <div className="overflow-x-auto">

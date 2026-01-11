@@ -109,11 +109,15 @@ export type Database = {
           message_content: Json | null
           name: string
           scheduled_at: string | null
+          scheduled_time: string | null
           sent_count: number | null
           status: string | null
           target_pages: string[] | null
+          target_all: boolean | null
+          is_enabled: boolean | null
           total_recipients: number | null
           user_id: string
+          updated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -122,11 +126,15 @@ export type Database = {
           message_content?: Json | null
           name: string
           scheduled_at?: string | null
+          scheduled_time?: string | null
           sent_count?: number | null
           status?: string | null
           target_pages?: string[] | null
+          target_all?: boolean | null
+          is_enabled?: boolean | null
           total_recipients?: number | null
           user_id: string
+          updated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -135,13 +143,123 @@ export type Database = {
           message_content?: Json | null
           name?: string
           scheduled_at?: string | null
+          scheduled_time?: string | null
           sent_count?: number | null
           status?: string | null
           target_pages?: string[] | null
+          target_all?: boolean | null
+          is_enabled?: boolean | null
           total_recipients?: number | null
           user_id?: string
+          updated_at?: string | null
         }
         Relationships: []
+      }
+      broadcast_messages: {
+        Row: {
+          id: string
+          broadcast_id: string
+          title: string
+          subtitle: string | null
+          image_url: string | null
+          buttons: Json | null
+          text_content: string | null
+          message_type: string | null
+          is_enabled: boolean | null
+          weight: number | null
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          broadcast_id: string
+          title: string
+          subtitle?: string | null
+          image_url?: string | null
+          buttons?: Json | null
+          text_content?: string | null
+          message_type?: string | null
+          is_enabled?: boolean | null
+          weight?: number | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          broadcast_id?: string
+          title?: string
+          subtitle?: string | null
+          image_url?: string | null
+          buttons?: Json | null
+          text_content?: string | null
+          message_type?: string | null
+          is_enabled?: boolean | null
+          weight?: number | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_messages_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "broadcasts"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      response_messages: {
+        Row: {
+          id: string
+          response_id: string
+          title: string
+          subtitle: string | null
+          image_url: string | null
+          buttons: Json | null
+          text_content: string | null
+          message_type: string | null
+          is_enabled: boolean | null
+          weight: number | null
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          response_id: string
+          title: string
+          subtitle?: string | null
+          image_url?: string | null
+          buttons?: Json | null
+          text_content?: string | null
+          message_type?: string | null
+          is_enabled?: boolean | null
+          weight?: number | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          response_id?: string
+          title?: string
+          subtitle?: string | null
+          image_url?: string | null
+          buttons?: Json | null
+          text_content?: string | null
+          message_type?: string | null
+          is_enabled?: boolean | null
+          weight?: number | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "response_messages_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: false
+            referencedRelation: "responses"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       flow_logs: {
         Row: {

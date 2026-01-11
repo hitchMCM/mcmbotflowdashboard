@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Bell, Plus, ChevronDown, Zap, LogOut, User } from "lucide-react";
+import { Search, Bell, ChevronDown, LogOut, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -13,13 +11,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth, logout } from "@/components/auth/ProtectedRoute";
+import { PageSelector } from "@/components/dashboard/PageSelector";
 
 interface HeaderProps {
   pageName?: string;
   isActive?: boolean;
 }
 
-export function Header({ pageName = "Career Hub", isActive = true }: HeaderProps) {
+export function Header({ pageName = "Dashboard", isActive = true }: HeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
   const [hasNotifications] = useState(true);
   const { user } = useAuth();
@@ -32,8 +31,8 @@ export function Header({ pageName = "Career Hub", isActive = true }: HeaderProps
       className="sticky top-0 z-40 glass border-b border-white/10 px-8 py-4"
     >
       <div className="flex items-center justify-between">
-        {/* Left: Page Info */}
-        <div className="flex items-center gap-4">
+        {/* Left: Page Info + Page Selector */}
+        <div className="flex items-center gap-6">
           <div>
             <h1 className="text-xl font-display font-bold">{pageName}</h1>
             <div className="flex items-center gap-2 mt-1">
@@ -43,6 +42,8 @@ export function Header({ pageName = "Career Hub", isActive = true }: HeaderProps
               </span>
             </div>
           </div>
+          <div className="h-8 w-px bg-white/10" />
+          <PageSelector />
         </div>
 
         {/* Center: Search */}
@@ -60,27 +61,6 @@ export function Header({ pageName = "Career Hub", isActive = true }: HeaderProps
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
-          {/* Quick Actions */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="bg-gradient-primary text-primary-foreground hover:opacity-90 glow-sm rounded-xl">
-                <Plus className="h-4 w-4 mr-2" />
-                Quick Action
-                <ChevronDown className="h-4 w-4 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="glass border-white/10 w-48">
-              <DropdownMenuItem className="cursor-pointer focus:bg-white/10">
-                <Zap className="h-4 w-4 mr-2 text-primary" />
-                New Broadcast
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer focus:bg-white/10">
-                <Plus className="h-4 w-4 mr-2 text-primary" />
-                Connect Page
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {/* Notifications */}
           <button className="relative p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
             <Bell className="h-5 w-5 text-muted-foreground" />

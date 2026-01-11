@@ -1,15 +1,41 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { GlassCard } from "@/components/ui/GlassCard";
+import { 
+  Zap, Save, Eye, Plus, Trash2, Copy, Loader2, X, Code, 
+  Image, Type, MousePointer, ToggleLeft, FileText, Pencil, Check, Hash
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { motion } from "framer-motion";
-import { Plus, Image, ExternalLink, Copy, Eye, Save, Trash2, HelpCircle, Loader2, Check, Code, RefreshCw, Send, CheckCheck, MousePointer } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useResponses, useMessageStats, useButtonClicks } from "@/hooks/useSupabase";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { useMessages } from "@/hooks/useMessages";
+import { usePage } from "@/contexts/PageContext";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface MessageButton {
   type: "web_url" | "postback";
@@ -24,427 +50,727 @@ interface TemplateElement {
   buttons: MessageButton[];
 }
 
-export default function Responses() {
-  const [messageType, setMessageType] = useState<"text" | "template">("template");
-  const [responseName, setResponseName] = useState("Réponse Standard");
-  const [textMessage, setTextMessage] = useState("Bonjour {{ $json.Name_complet }}! Merci pour votre message. Comment puis-je vous aider?");
-  const [template, setTemplate] = useState<TemplateElement>({
-    title: "{{ $json.Name_complet }}, Comment puis-je vous aider? 🤝",
-    subtitle: "Choisissez une option ci-dessous pour obtenir une réponse rapide.",
-    image_url: "https://i.postimg.cc/X7p2SyFz/Depositphotos-10731593-s-2019.jpg",
-    buttons: [
-      { type: "web_url", url: "https://example.com/faq", title: "❓ FAQ" },
-      { type: "web_url", url: "https://example.com/contact", title: "📞 Contact" }
-    ]
-  });
-  const [saving, setSaving] = useState(false);
-  const [jsonEditMode, setJsonEditMode] = useState(false);
-  const [jsonText, setJsonText] = useState("");
-  const [jsonError, setJsonError] = useState<string | null>(null);
-  
-  const { responses, loading, saveResponse, deleteResponse, refetch } = useResponses();
-  const currentResponseId = responses.length > 0 ? responses[0].id : undefined;
-  const { stats, loading: statsLoading } = useMessageStats('response', currentResponseId);
-  const { data: clicksData, loading: clicksLoading } = useButtonClicks('response', currentResponseId);
-  const { toast } = useToast();
+const defaultTemplate: TemplateElement = {
+  title: "Quick Reply",
+  subtitle: "Here's the information you requested.",
+  image_url: "",
+  buttons: []
+};
 
-  // Charger les données de Supabase au démarrage
+export default function Responses() {
+  const { currentPage } = usePage();
+  const { messages, loading, createMessage, updateMessage, deleteMessage, refetch } = useMessages('response');
+  const { toast } = useToast();
+  
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showJsonDialog, setShowJsonDialog] = useState(false);
+  const [jsonEditMode, setJsonEditMode] = useState(false);
+  const [jsonContent, setJsonContent] = useState("");
+  const [newKeyword, setNewKeyword] = useState("");
+  const [hasChanges, setHasChanges] = useState(false);
+  
+  // Store original data to compare for changes
+  const originalDataRef = useRef<string>("");
+  
+  // Local editing state
+  const [editName, setEditName] = useState("");
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [messageType, setMessageType] = useState<"text" | "template">("template");
+  const [textMessage, setTextMessage] = useState("");
+  const [templateElement, setTemplateElement] = useState<TemplateElement>(defaultTemplate);
+  const [keywords, setKeywords] = useState<string[]>([]);
+
+  const selectedMessage = messages.find(m => m.id === selectedId) || null;
+
+  // Auto-select first message if none selected
   useEffect(() => {
-    if (responses.length > 0) {
-      const savedResponse = responses[0]; // Prendre la première réponse
-      setResponseName(savedResponse.name || "Réponse Standard");
-      setMessageType((savedResponse.message_type as "text" | "template") ?? "template");
-      if (savedResponse.text_content) {
-        setTextMessage(savedResponse.text_content);
-      }
-      if (savedResponse.title || savedResponse.subtitle || savedResponse.image_url) {
-        setTemplate({
-          title: savedResponse.title || "",
-          subtitle: savedResponse.subtitle || "",
-          image_url: savedResponse.image_url || "",
-          buttons: (savedResponse.buttons as MessageButton[]) || []
+    if (messages.length > 0 && !selectedId) {
+      setSelectedId(messages[0].id);
+    }
+  }, [messages, selectedId]);
+
+  // Load message data when selection changes
+  useEffect(() => {
+    if (selectedMessage) {
+      setEditName(selectedMessage.name);
+      setIsEnabled(selectedMessage.is_active);
+      setKeywords(selectedMessage.keywords || []);
+      
+      if (selectedMessage.text_content) {
+        setMessageType("text");
+        setTextMessage(selectedMessage.text_content);
+        setTemplateElement(defaultTemplate);
+      } else {
+        setMessageType("template");
+        setTextMessage("");
+        setTemplateElement({
+          title: selectedMessage.title || "",
+          subtitle: selectedMessage.subtitle || "",
+          image_url: selectedMessage.image_url || "",
+          buttons: (selectedMessage.buttons as MessageButton[]) || []
         });
       }
+      
+      // Store original data for change detection
+      originalDataRef.current = JSON.stringify({
+        name: selectedMessage.name,
+        is_active: selectedMessage.is_active,
+        keywords: selectedMessage.keywords,
+        text_content: selectedMessage.text_content,
+        title: selectedMessage.title,
+        subtitle: selectedMessage.subtitle,
+        image_url: selectedMessage.image_url,
+        buttons: selectedMessage.buttons
+      });
+      setHasChanges(false);
     }
-  }, [responses]);
+  }, [selectedMessage]);
+
+  // Detect changes when editing
+  useEffect(() => {
+    if (!selectedMessage) return;
+    
+    const currentData = JSON.stringify({
+      name: editName,
+      is_active: isEnabled,
+      keywords: keywords,
+      text_content: messageType === "text" ? textMessage : null,
+      title: messageType === "template" ? templateElement.title : null,
+      subtitle: messageType === "template" ? templateElement.subtitle : null,
+      image_url: messageType === "template" ? templateElement.image_url : null,
+      buttons: messageType === "template" ? templateElement.buttons : []
+    });
+    
+    setHasChanges(currentData !== originalDataRef.current);
+  }, [editName, isEnabled, keywords, messageType, textMessage, templateElement, selectedMessage]);
 
   const updateButton = (index: number, field: keyof MessageButton, value: string) => {
-    const newButtons = [...template.buttons];
+    const newButtons = [...templateElement.buttons];
     newButtons[index] = { ...newButtons[index], [field]: value };
-    setTemplate({ ...template, buttons: newButtons });
+    setTemplateElement({ ...templateElement, buttons: newButtons });
   };
 
   const addButton = () => {
-    if (template.buttons.length < 3) {
-      setTemplate({ ...template, buttons: [...template.buttons, { type: "web_url", url: "", title: "New" }] });
+    if (templateElement.buttons.length < 3) {
+      setTemplateElement({
+        ...templateElement,
+        buttons: [...templateElement.buttons, { type: "web_url", url: "", title: "New Button" }]
+      });
     }
   };
 
   const removeButton = (index: number) => {
-    setTemplate({ ...template, buttons: template.buttons.filter((_, i) => i !== index) });
+    setTemplateElement({
+      ...templateElement,
+      buttons: templateElement.buttons.filter((_, i) => i !== index)
+    });
+  };
+
+  const addKeyword = () => {
+    const kw = newKeyword.trim().toLowerCase();
+    if (kw && !keywords.includes(kw)) {
+      setKeywords([...keywords, kw]);
+      setNewKeyword("");
+    }
+  };
+
+  const removeKeyword = (keyword: string) => {
+    setKeywords(keywords.filter(k => k !== keyword));
   };
 
   const generateJSON = () => {
     if (messageType === "text") {
-      return { recipient: { id: "{{ $json.ID }}" }, message: { text: textMessage } };
+      return { recipient: { id: "{{PSID}}" }, message: { text: textMessage } };
     }
     return {
-      recipient: { id: "{{ $json.ID }}" },
+      recipient: { id: "{{PSID}}" },
       message: {
         attachment: {
           type: "template",
-          payload: {
-            template_type: "generic",
-            elements: [{ title: template.title, subtitle: template.subtitle, image_url: template.image_url, buttons: template.buttons }]
+          payload: { 
+            template_type: "generic", 
+            elements: [{
+              title: templateElement.title,
+              subtitle: templateElement.subtitle,
+              image_url: templateElement.image_url || undefined,
+              buttons: templateElement.buttons.length > 0 ? templateElement.buttons : undefined
+            }] 
           }
         }
       }
     };
   };
 
-  const copyJSON = () => navigator.clipboard.writeText(JSON.stringify(generateJSON(), null, 2));
+  const copyJSON = () => {
+    navigator.clipboard.writeText(JSON.stringify(generateJSON(), null, 2));
+    toast({ title: "📋 Copied!", description: "JSON copied to clipboard" });
+  };
 
-  // Synchroniser le JSON texte avec le formulaire
-  useEffect(() => {
-    if (!jsonEditMode) {
-      setJsonText(JSON.stringify(generateJSON(), null, 2));
-    }
-  }, [messageType, textMessage, template, jsonEditMode]);
+  const openJsonDialog = () => {
+    setJsonContent(JSON.stringify(generateJSON(), null, 2));
+    setJsonEditMode(false);
+    setShowJsonDialog(true);
+  };
 
   const applyJsonChanges = () => {
     try {
-      const parsed = JSON.parse(jsonText);
-      setJsonError(null);
-      
-      // Détecter si c'est un message texte ou template
+      const parsed = JSON.parse(jsonContent);
       if (parsed.message?.text) {
         setMessageType("text");
         setTextMessage(parsed.message.text);
       } else if (parsed.message?.attachment?.payload?.elements?.[0]) {
-        const element = parsed.message.attachment.payload.elements[0];
+        const elem = parsed.message.attachment.payload.elements[0];
         setMessageType("template");
-        setTemplate({
-          title: element.title || "",
-          subtitle: element.subtitle || "",
-          image_url: element.image_url || "",
-          buttons: element.buttons || []
+        setTemplateElement({
+          title: elem.title || "",
+          subtitle: elem.subtitle || "",
+          image_url: elem.image_url || "",
+          buttons: elem.buttons || []
         });
       }
-      
-      setJsonEditMode(false);
-      toast({
-        title: "✅ JSON appliqué !",
-        description: "Le formulaire a été mis à jour avec votre JSON.",
-      });
-    } catch (err) {
-      setJsonError("JSON invalide: " + (err instanceof Error ? err.message : "Erreur de syntaxe"));
+      setShowJsonDialog(false);
+      toast({ title: "✅ Applied!", description: "JSON changes applied" });
+    } catch (e) {
+      toast({ title: "❌ Invalid JSON", description: "Please check your JSON syntax", variant: "destructive" });
     }
   };
 
-  const saveToSupabase = async () => {
+  const handleSave = async () => {
+    if (!selectedMessage) return;
     setSaving(true);
     try {
-      const messengerPayload = generateJSON();
-      
-      await saveResponse({
-        is_enabled: true,
-        trigger_type: "keyword",
-        trigger_keywords: ["aide", "help", "info"],
-        message_type: messageType,
+      await updateMessage(selectedMessage.id, {
+        name: editName,
+        is_active: isEnabled,
         text_content: messageType === "text" ? textMessage : null,
-        title: messageType === "template" ? template.title : null,
-        subtitle: messageType === "template" ? template.subtitle : null,
-        image_url: messageType === "template" ? template.image_url : null,
-        buttons: messageType === "template" ? template.buttons : [],
-        messenger_payload: messengerPayload,
-        times_triggered: 0
-      }, responseName);
-      
-      toast({
-        title: "✅ Sauvegardé !",
-        description: "Votre réponse standard a été enregistrée dans Supabase.",
+        title: messageType === "template" ? templateElement.title : null,
+        subtitle: messageType === "template" ? templateElement.subtitle : null,
+        image_url: messageType === "template" ? templateElement.image_url : null,
+        buttons: messageType === "template" ? templateElement.buttons : [],
+        messenger_payload: generateJSON()
       });
       
+      // Update original data reference after successful save
+      originalDataRef.current = JSON.stringify({
+        name: editName,
+        is_active: isEnabled,
+        keywords: keywords,
+        text_content: messageType === "text" ? textMessage : null,
+        title: messageType === "template" ? templateElement.title : null,
+        subtitle: messageType === "template" ? templateElement.subtitle : null,
+        image_url: messageType === "template" ? templateElement.image_url : null,
+        buttons: messageType === "template" ? templateElement.buttons : []
+      });
+      setHasChanges(false);
+      
+      toast({ title: "✅ Saved!", description: "Standard reply updated." });
       await refetch();
     } catch (error) {
-      console.error("Erreur sauvegarde:", error);
-      toast({
-        title: "❌ Erreur",
-        description: "Impossible de sauvegarder la réponse.",
-        variant: "destructive"
-      });
+      toast({ title: "❌ Error", description: "Unable to save.", variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteFromSupabase = async () => {
-    if (responses.length === 0) return;
+  const handleAddNew = async () => {
     try {
-      await deleteResponse(responses[0].id);
-      toast({
-        title: "🗑️ Supprimé !",
-        description: "La réponse a été supprimée. Les valeurs par défaut seront affichées.",
+      const created = await createMessage({
+        name: `Standard Reply ${messages.length + 1}`,
+        category: 'response',
+        title: defaultTemplate.title,
+        subtitle: defaultTemplate.subtitle,
+        is_active: true
       });
-      // Reset to defaults
-      setResponseName("Réponse Standard");
-      setTextMessage("Bonjour {{ $json.Name_complet }}! Merci pour votre message. Comment puis-je vous aider?");
-      setTemplate({
-        title: "{{ $json.Name_complet }}, Comment puis-je vous aider? 🤝",
-        subtitle: "Choisissez une option ci-dessous pour obtenir une réponse rapide.",
-        image_url: "https://i.postimg.cc/X7p2SyFz/Depositphotos-10731593-s-2019.jpg",
-        buttons: [
-          { type: "web_url", url: "https://example.com/faq", title: "❓ FAQ" },
-          { type: "web_url", url: "https://example.com/contact", title: "📞 Contact" }
-        ]
-      });
+      if (created) {
+        await refetch();
+        setSelectedId(created.id);
+        toast({ title: "✅ Created!", description: "New standard reply added." });
+      } else {
+        toast({ title: "❌ Error", description: "Unable to create message. Check console for details.", variant: "destructive" });
+      }
     } catch (error) {
-      console.error("Erreur suppression:", error);
-      toast({
-        title: "❌ Erreur",
-        description: "Impossible de supprimer la réponse.",
-        variant: "destructive"
-      });
+      console.error('Create error:', error);
+      toast({ title: "❌ Error", description: "Unable to create message.", variant: "destructive" });
     }
   };
 
+  const handleDelete = async () => {
+    if (!selectedMessage) return;
+    
+    setDeleting(true);
+    try {
+      const success = await deleteMessage(selectedMessage.id);
+      if (success) {
+        toast({ title: "🗑️ Deleted!", description: "Standard reply removed." });
+        setSelectedId(null);
+        await refetch();
+      } else {
+        toast({ title: "❌ Error", description: "Unable to delete message.", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast({ title: "❌ Error", description: "Unable to delete message.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout pageName="Standard Replies">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
-    <DashboardLayout pageName="Standard Responses">
+    <DashboardLayout pageName="Standard Replies">
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-display font-bold">Réponses Standards</h1>
-            <p className="text-muted-foreground">Message de réponse automatique</p>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Zap className="h-6 w-6 text-primary" />
+              Standard Replies
+            </h1>
+            <p className="text-muted-foreground">
+              Automatic responses to keywords
+            </p>
           </div>
-          <div className="flex gap-2">
-            {responses.length > 0 && (
-              <Button variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={deleteFromSupabase}>
-                <Trash2 className="h-4 w-4 mr-2" />Supprimer
-              </Button>
-            )}
-            <Button variant="outline" className="border-white/10" onClick={copyJSON}><Copy className="h-4 w-4 mr-2" />Copier JSON</Button>
-            <Button 
-              className="bg-gradient-primary text-primary-foreground" 
-              onClick={saveToSupabase}
-              disabled={saving}
-            >
-              {saving ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sauvegarde...</>
-              ) : (
-                <><Save className="h-4 w-4 mr-2" />Sauvegarder</>
-              )}
-            </Button>
-          </div>
+          <Button onClick={handleAddNew} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New Reply
+          </Button>
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
-          <GlassCard><div className="text-center"><p className="text-3xl font-bold gradient-text">{loading ? "..." : responses.length}</p><p className="text-sm text-muted-foreground mt-1">Réponses</p></div></GlassCard>
-          <GlassCard>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/20"><Send className="h-4 w-4 text-blue-400" /></div>
-              <div><p className="text-2xl font-bold text-blue-400">{statsLoading ? "..." : stats.sent_count}</p><p className="text-xs text-muted-foreground">Envoyés</p></div>
-            </div>
-          </GlassCard>
-          <GlassCard>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/20"><CheckCheck className="h-4 w-4 text-green-400" /></div>
-              <div>
-                <p className="text-2xl font-bold text-green-400">{statsLoading ? "..." : stats.delivered_count}</p>
-                <p className="text-xs text-muted-foreground">Délivrés</p>
-                {stats.sent_count > 0 && <p className="text-[10px] text-muted-foreground">{Math.round((stats.delivered_count / stats.sent_count) * 100)}%</p>}
-              </div>
-            </div>
-          </GlassCard>
-          <GlassCard>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/20"><Eye className="h-4 w-4 text-purple-400" /></div>
-              <div>
-                <p className="text-2xl font-bold text-purple-400">{statsLoading ? "..." : stats.read_count}</p>
-                <p className="text-xs text-muted-foreground">Lus</p>
-                {stats.delivered_count > 0 && <p className="text-[10px] text-muted-foreground">{Math.round((stats.read_count / stats.delivered_count) * 100)}%</p>}
-              </div>
-            </div>
-          </GlassCard>
-          <GlassCard>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/20"><MousePointer className="h-4 w-4 text-orange-400" /></div>
-              <div>
-                <p className="text-2xl font-bold text-orange-400">{clicksLoading ? "..." : clicksData.total_clicks}</p>
-                <p className="text-xs text-muted-foreground">Cliqués</p>
-                {stats.read_count > 0 && <p className="text-[10px] text-muted-foreground">{Math.round((clicksData.total_clicks / stats.read_count) * 100)}%</p>}
-              </div>
-            </div>
-          </GlassCard>
-        </div>
-
-        {/* Détail des clics par bouton */}
-        {currentResponseId && clicksData.total_clicks > 0 && (
-          <GlassCard className="p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <MousePointer className="h-5 w-5 text-orange-400" />
-              <h3 className="font-semibold">Détail des clics par bouton</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {clicksData.buttons.map((btn, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-sm font-bold text-orange-400">
-                      {i + 1}
+        <div className="grid lg:grid-cols-12 gap-6">
+          {/* Left Panel - Message List */}
+          <Card className="lg:col-span-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span>All Replies ({messages.length})</span>
+              </CardTitle>
+              <CardDescription>Click to select and edit</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-[600px]">
+                <div className="p-4 space-y-2">
+                  {messages.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Zap className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                      <p>No replies yet</p>
+                      <Button variant="link" onClick={handleAddNew}>Create your first reply</Button>
                     </div>
-                    <p className="font-medium text-sm truncate max-w-[150px]">{btn.button_title}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-orange-400">{btn.click_count}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {Math.round((btn.click_count / clicksData.total_clicks) * 100)}%
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </GlassCard>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <GlassCard hover={false}>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 rounded-lg bg-primary/20"><HelpCircle className="h-5 w-5 text-primary" /></div>
-                <h3 className="font-display font-semibold">Éditeur de Réponse</h3>
-              </div>
-
-              <div className="space-y-4 mb-6">
-                <div className="space-y-2">
-                  <Label>Nom de la réponse</Label>
-                  <Input 
-                    value={responseName} 
-                    onChange={(e) => setResponseName(e.target.value)} 
-                    className="bg-white/5 border-white/10" 
-                    placeholder="Ex: Réponse de bienvenue, FAQ, etc." 
-                  />
-                </div>
-              </div>
-
-              <Tabs value={messageType} onValueChange={(v) => setMessageType(v as "text" | "template")}>
-                <TabsList className="bg-white/5 w-full">
-                  <TabsTrigger value="text" className="flex-1">Message Texte</TabsTrigger>
-                  <TabsTrigger value="template" className="flex-1">Template Riche</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="text" className="mt-6 space-y-4">
-                  <div className="space-y-2">
-                    <Label>Contenu du message</Label>
-                    <Textarea value={textMessage} onChange={(e) => setTextMessage(e.target.value)} className="bg-white/5 border-white/10 min-h-[200px]" placeholder="Entrez votre message..." />
-                    <p className="text-xs text-muted-foreground">Variables: {"{{ $json.Name_complet }}"}, {"{{ $json.ID }}"}</p>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="template" className="mt-6 space-y-4">
-                  <div className="space-y-2">
-                    <Label><Image className="h-4 w-4 inline mr-1" />URL de l'image</Label>
-                    <Input value={template.image_url} onChange={(e) => setTemplate({ ...template, image_url: e.target.value })} className="bg-white/5 border-white/10" placeholder="https://..." />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Titre</Label>
-                    <Input value={template.title} onChange={(e) => setTemplate({ ...template, title: e.target.value })} className="bg-white/5 border-white/10" />
-                    <p className="text-xs text-muted-foreground">Variables: {"{{ $json.Name_complet }}"}, {"{{ $json.ID }}"}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sous-titre</Label>
-                    <Textarea value={template.subtitle} onChange={(e) => setTemplate({ ...template, subtitle: e.target.value })} className="bg-white/5 border-white/10 min-h-[60px]" />
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label>Boutons (max 3)</Label>
-                      {template.buttons.length < 3 && <Button variant="outline" size="sm" onClick={addButton} className="border-white/10"><Plus className="h-4 w-4 mr-1" />Ajouter</Button>}
-                    </div>
-                    {template.buttons.map((button, index) => (
-                      <div key={index} className="p-3 bg-white/5 rounded-lg space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Bouton {index + 1}</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeButton(index)}><Trash2 className="h-3 w-3" /></Button>
-                        </div>
-                        <Input value={button.title} onChange={(e) => updateButton(index, "title", e.target.value)} className="bg-white/5 border-white/10 h-8 text-sm" placeholder="Texte du bouton" />
-                        <Input value={button.url} onChange={(e) => updateButton(index, "url", e.target.value)} className="bg-white/5 border-white/10 h-8 text-sm" placeholder="https://..." />
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </GlassCard>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="space-y-6">
-            <GlassCard hover={false}>
-              <div className="flex items-center gap-2 mb-4"><Eye className="h-5 w-5 text-primary" /><h3 className="font-display font-semibold">Aperçu Messenger</h3></div>
-              <div className="bg-[#0084ff]/10 rounded-2xl p-4">
-                {messageType === "text" ? (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-primary flex-shrink-0" />
-                    <div className="bg-white/10 rounded-2xl rounded-tl-none p-4 max-w-[300px]">
-                      <p className="text-sm whitespace-pre-wrap">{textMessage.replace("{{ $json.Name_complet }}", "John") || "Votre message ici..."}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-primary flex-shrink-0" />
-                    <div className="bg-white rounded-2xl rounded-tl-none overflow-hidden max-w-[280px] shadow-lg">
-                      {template.image_url && <img src={template.image_url} alt="" className="w-full h-32 object-cover" />}
-                      <div className="p-3 bg-white text-black">
-                        <h4 className="font-semibold text-sm">{template.title.replace("{{ $json.Name_complet }}", "John")}</h4>
-                        <p className="text-xs text-gray-600 mt-1">{template.subtitle}</p>
-                      </div>
-                      <div className="border-t border-gray-200">
-                        {template.buttons.map((btn, i) => (
-                          <div key={i} className="flex items-center justify-center gap-2 py-2 text-[#0084ff] text-sm font-medium border-b border-gray-100 last:border-0">{btn.title}<ExternalLink className="h-3 w-3" /></div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </GlassCard>
-
-            <GlassCard hover={false}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Code className="h-4 w-4 text-primary" />
-                  <h3 className="font-display font-semibold text-sm">JSON {jsonEditMode ? "(Mode Édition)" : "Output"}</h3>
-                </div>
-                <div className="flex gap-2">
-                  {jsonEditMode ? (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => { setJsonEditMode(false); setJsonError(null); }} className="border-white/10">Annuler</Button>
-                      <Button size="sm" onClick={applyJsonChanges} className="bg-green-600 hover:bg-green-700"><RefreshCw className="h-3 w-3 mr-1" />Appliquer</Button>
-                    </>
                   ) : (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => setJsonEditMode(true)} className="border-white/10"><Code className="h-3 w-3 mr-1" />Éditer</Button>
-                      <Button variant="outline" size="sm" onClick={copyJSON} className="border-white/10"><Copy className="h-3 w-3 mr-1" />Copier</Button>
-                    </>
+                    messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        onClick={() => setSelectedId(msg.id)}
+                        className={cn(
+                          "p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md",
+                          selectedId === msg.id 
+                            ? "border-primary bg-primary/5 shadow-sm" 
+                            : "border-border hover:border-primary/50"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium truncate">{msg.name}</h4>
+                              <Badge variant={msg.is_active ? "default" : "secondary"} className="text-[10px] shrink-0">
+                                {msg.is_active ? "Active" : "Inactive"}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {msg.text_content || msg.title || "Template message"}
+                            </p>
+                            {/* Keywords */}
+                            {msg.keywords && (msg.keywords as string[]).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {(msg.keywords as string[]).slice(0, 3).map((kw, i) => (
+                                  <Badge key={i} variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">
+                                    #{kw}
+                                  </Badge>
+                                ))}
+                                {(msg.keywords as string[]).length > 3 && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    +{(msg.keywords as string[]).length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {selectedId === msg.id && (
+                            <Check className="h-5 w-5 text-primary shrink-0" />
+                          )}
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
-              </div>
-              {jsonError && (
-                <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-2 mb-2 text-xs text-red-400">
-                  {jsonError}
-                </div>
-              )}
-              {jsonEditMode ? (
-                <Textarea 
-                  value={jsonText} 
-                  onChange={(e) => setJsonText(e.target.value)} 
-                  className="bg-black/30 border-white/10 font-mono text-xs text-green-400 min-h-[250px]"
-                  spellCheck={false}
-                />
-              ) : (
-                <pre className="bg-black/30 rounded-xl p-3 overflow-auto text-xs text-green-400 max-h-[200px]">{JSON.stringify(generateJSON(), null, 2)}</pre>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">💡 Cliquez sur "Éditer" pour modifier le JSON directement, puis "Appliquer" pour synchroniser le formulaire.</p>
-            </GlassCard>
-          </motion.div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          {/* Right Panel - Editor */}
+          <div className="lg:col-span-8 space-y-4">
+            {selectedMessage ? (
+              <>
+                {/* Editor Card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Pencil className="h-4 w-4" />
+                        Edit Reply
+                      </CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={openJsonDialog}>
+                          <Code className="h-4 w-4 mr-1" />
+                          JSON
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={copyJSON}>
+                          <Copy className="h-4 w-4 mr-1" />
+                          Copy
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)} disabled={deleting}>
+                          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Name & Status */}
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <FileText className="h-3 w-3" />
+                          Reply Name
+                        </Label>
+                        <Input 
+                          value={editName} 
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Enter reply name..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <ToggleLeft className="h-3 w-3" />
+                          Status
+                        </Label>
+                        <div className="flex items-center gap-3 h-10">
+                          <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
+                          <span className={cn("text-sm", isEnabled ? "text-green-600" : "text-muted-foreground")}>
+                            {isEnabled ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Keywords Section */}
+                    <div className="space-y-3 p-4 bg-blue-50/50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Label className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+                        <Hash className="h-4 w-4" />
+                        Trigger Keywords
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter keyword..."
+                          value={newKeyword}
+                          onChange={(e) => setNewKeyword(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addKeyword()}
+                          className="flex-1"
+                        />
+                        <Button onClick={addKeyword} size="sm">
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {keywords.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {keywords.map((kw, i) => (
+                            <Badge key={i} variant="secondary" className="gap-1 pl-2 pr-1 py-1">
+                              #{kw}
+                              <button
+                                onClick={() => removeKeyword(kw)}
+                                className="ml-1 hover:bg-destructive/20 rounded p-0.5"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        When a user sends a message containing any of these keywords, this reply will be sent.
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    {/* Message Type Tabs */}
+                    <Tabs value={messageType} onValueChange={(v) => setMessageType(v as "text" | "template")}>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="template" className="gap-2">
+                          <Image className="h-4 w-4" />
+                          Template (Rich)
+                        </TabsTrigger>
+                        <TabsTrigger value="text" className="gap-2">
+                          <Type className="h-4 w-4" />
+                          Simple Text
+                        </TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="text" className="mt-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label>Reply Text</Label>
+                          <Textarea
+                            placeholder="Enter your reply text..."
+                            value={textMessage}
+                            onChange={(e) => setTextMessage(e.target.value)}
+                            className="min-h-32"
+                          />
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="template" className="mt-4 space-y-4">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="flex items-center gap-1">
+                              <Image className="h-3 w-3" />
+                              Image URL (optional)
+                            </Label>
+                            <Input
+                              placeholder="https://example.com/image.jpg"
+                              value={templateElement.image_url}
+                              onChange={(e) => setTemplateElement({ ...templateElement, image_url: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Title</Label>
+                            <Input
+                              placeholder="Quick Reply"
+                              value={templateElement.title}
+                              onChange={(e) => setTemplateElement({ ...templateElement, title: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label>Subtitle / Description</Label>
+                          <Textarea
+                            placeholder="Here's the information you requested..."
+                            value={templateElement.subtitle}
+                            onChange={(e) => setTemplateElement({ ...templateElement, subtitle: e.target.value })}
+                            className="min-h-20"
+                          />
+                        </div>
+                        
+                        {/* Buttons Section */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label className="flex items-center gap-1">
+                              <MousePointer className="h-3 w-3" />
+                              Buttons ({templateElement.buttons.length}/3)
+                            </Label>
+                            {templateElement.buttons.length < 3 && (
+                              <Button variant="outline" size="sm" onClick={addButton}>
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add Button
+                              </Button>
+                            )}
+                          </div>
+                          
+                          {templateElement.buttons.map((btn, idx) => (
+                            <div key={idx} className="flex gap-2 items-start p-3 bg-muted/50 rounded-lg border">
+                              <div className="flex-1 grid sm:grid-cols-2 gap-2">
+                                <Input
+                                  placeholder="Button text"
+                                  value={btn.title}
+                                  onChange={(e) => updateButton(idx, "title", e.target.value)}
+                                />
+                                <Input
+                                  placeholder="https://..."
+                                  value={btn.url}
+                                  onChange={(e) => updateButton(idx, "url", e.target.value)}
+                                />
+                              </div>
+                              <Button variant="ghost" size="icon" onClick={() => removeButton(idx)} className="shrink-0">
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+
+                    {/* Save Button */}
+                    <Button 
+                      onClick={handleSave} 
+                      disabled={saving || !hasChanges} 
+                      className={cn(
+                        "w-full transition-all duration-300",
+                        hasChanges 
+                          ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white animate-pulse shadow-lg shadow-orange-500/30" 
+                          : ""
+                      )} 
+                      size="lg"
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Saving...
+                        </>
+                      ) : hasChanges ? (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save Changes
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          Saved
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Preview Card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      Preview
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="max-w-sm mx-auto">
+                      <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
+                        {messageType === 'template' && templateElement.image_url && (
+                          <div 
+                            className="h-40 bg-cover bg-center bg-gray-300"
+                            style={{ backgroundImage: `url(${templateElement.image_url})` }}
+                          />
+                        )}
+                        <div className="p-4">
+                          {messageType === 'text' ? (
+                            <p className="whitespace-pre-line">{textMessage || "Your reply text here..."}</p>
+                          ) : (
+                            <>
+                              <h4 className="font-semibold text-lg">{templateElement.title || "Title"}</h4>
+                              <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
+                                {templateElement.subtitle || "Subtitle / description text"}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        {messageType === 'template' && templateElement.buttons.length > 0 && (
+                          <div className="border-t">
+                            {templateElement.buttons.map((btn, i) => (
+                              <div 
+                                key={i} 
+                                className="py-3 px-4 text-center text-sm font-medium text-primary border-b last:border-b-0 hover:bg-primary/5 cursor-pointer"
+                              >
+                                {btn.title || "Button"}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <Zap className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Reply Selected</h3>
+                  <p className="text-muted-foreground mb-4">Select a reply from the list or create a new one</p>
+                  <Button onClick={handleAddNew}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create New Reply
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* JSON Dialog */}
+      <Dialog open={showJsonDialog} onOpenChange={setShowJsonDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Code className="h-5 w-5" />
+              Messenger JSON Payload
+            </DialogTitle>
+            <DialogDescription>
+              View or edit the raw JSON that will be sent to Messenger API
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Switch checked={jsonEditMode} onCheckedChange={setJsonEditMode} />
+              <Label>Edit Mode</Label>
+            </div>
+            <ScrollArea className="h-[400px] rounded-lg border">
+              {jsonEditMode ? (
+                <Textarea
+                  value={jsonContent}
+                  onChange={(e) => setJsonContent(e.target.value)}
+                  className="min-h-[400px] font-mono text-sm border-0 focus-visible:ring-0"
+                />
+              ) : (
+                <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+                  {jsonContent}
+                </pre>
+              )}
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              navigator.clipboard.writeText(jsonContent);
+              toast({ title: "📋 Copied!" });
+            }}>
+              <Copy className="h-4 w-4 mr-1" />
+              Copy
+            </Button>
+            {jsonEditMode && (
+              <Button onClick={applyJsonChanges}>
+                <Check className="h-4 w-4 mr-1" />
+                Apply Changes
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Reply?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{selectedMessage?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

@@ -164,9 +164,9 @@ export default function Analytics() {
       // Messages by type
       const typeMap = new Map<string, number>();
       const typeLabels: Record<string, string> = {
-        'welcome': 'Bienvenue',
-        'response': 'Réponses',
-        'sequence': 'Séquences',
+        'welcome': 'Welcome',
+        'response': 'Responses',
+        'sequence': 'Sequences',
         'broadcast': 'Broadcasts'
       };
       messages.forEach((msg: any) => {
@@ -220,48 +220,48 @@ export default function Analytics() {
 
   const statCards = [
     { 
-      label: "Total Abonnés", 
+      label: "Total Subscribers", 
       value: stats.totalSubscribers, 
       icon: Users, 
       color: "from-cyan-500 to-blue-500",
       change: stats.activeSubscribers,
-      changeLabel: "actifs",
+      changeLabel: "active",
       trend: "up"
     },
     { 
-      label: "Messages Envoyés", 
+      label: "Messages Sent", 
       value: stats.totalMessages, 
       icon: Send, 
       color: "from-purple-500 to-pink-500",
       change: stats.deliveryRate,
-      changeLabel: "% délivrés",
+      changeLabel: "% delivered",
       trend: "up"
     },
     { 
-      label: "Messages Lus", 
+      label: "Messages Read", 
       value: stats.read, 
       icon: Eye, 
       color: "from-green-500 to-emerald-500",
       change: stats.readRate,
-      changeLabel: "% taux lecture",
+      changeLabel: "% read rate",
       trend: "up"
     },
     { 
-      label: "Clics Boutons", 
+      label: "Button Clicks", 
       value: stats.clicks, 
       icon: MousePointer, 
       color: "from-orange-500 to-red-500",
       change: stats.clickRate,
-      changeLabel: "% taux clic",
+      changeLabel: "% click rate",
       trend: stats.clickRate > 10 ? "up" : "down"
     },
   ];
 
   const funnelData = [
-    { name: 'Envoyés', value: stats.totalMessages, fill: '#06b6d4' },
-    { name: 'Délivrés', value: stats.delivered, fill: '#8b5cf6' },
-    { name: 'Lus', value: stats.read, fill: '#10b981' },
-    { name: 'Cliqués', value: stats.clicks, fill: '#f97316' },
+    { name: 'Sent', value: stats.totalMessages, fill: '#06b6d4' },
+    { name: 'Delivered', value: stats.delivered, fill: '#8b5cf6' },
+    { name: 'Read', value: stats.read, fill: '#10b981' },
+    { name: 'Clicked', value: stats.clicks, fill: '#f97316' },
   ];
 
   return (
@@ -277,7 +277,7 @@ export default function Analytics() {
             <h1 className="text-3xl font-display font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
               Analytics Dashboard
             </h1>
-            <p className="text-muted-foreground mt-1">Analysez les performances de votre bot Messenger</p>
+            <p className="text-muted-foreground mt-1">Analyze your Messenger bot performance</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex bg-white/5 rounded-xl p-1">
@@ -308,7 +308,7 @@ export default function Analytics() {
               className="border-white/10"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Actualiser
+              Refresh
             </Button>
           </div>
         </motion.div>
@@ -361,21 +361,21 @@ export default function Analytics() {
             <GlassCard hover={false} className="h-full">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="font-display font-semibold text-lg">Tendance des Messages</h3>
-                  <p className="text-sm text-muted-foreground">Envoyés, délivrés et lus par jour</p>
+                  <h3 className="font-display font-semibold text-lg">Message Trends</h3>
+                  <p className="text-sm text-muted-foreground">Sent, delivered and read per day</p>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-cyan-500" />
-                    <span className="text-muted-foreground">Envoyés</span>
+                    <span className="text-muted-foreground">Sent</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-purple-500" />
-                    <span className="text-muted-foreground">Délivrés</span>
+                    <span className="text-muted-foreground">Delivered</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <span className="text-muted-foreground">Lus</span>
+                    <span className="text-muted-foreground">Read</span>
                   </div>
                 </div>
               </div>
@@ -396,9 +396,9 @@ export default function Analytics() {
                     <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={12} />
                     <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="sent" stroke="#06b6d4" fill="url(#sentGradient)" strokeWidth={2} name="Envoyés" />
-                    <Area type="monotone" dataKey="delivered" stroke="#8b5cf6" fill="url(#deliveredGradient)" strokeWidth={2} name="Délivrés" />
-                    <Line type="monotone" dataKey="read" stroke="#10b981" strokeWidth={3} dot={{ fill: '#10b981', strokeWidth: 2 }} name="Lus" />
+                    <Area type="monotone" dataKey="sent" stroke="#06b6d4" fill="url(#sentGradient)" strokeWidth={2} name="Sent" />
+                    <Area type="monotone" dataKey="delivered" stroke="#8b5cf6" fill="url(#deliveredGradient)" strokeWidth={2} name="Delivered" />
+                    <Line type="monotone" dataKey="read" stroke="#10b981" strokeWidth={3} dot={{ fill: '#10b981', strokeWidth: 2 }} name="Read" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -413,8 +413,8 @@ export default function Analytics() {
           >
             <GlassCard hover={false} className="h-full">
               <div className="mb-4">
-                <h3 className="font-display font-semibold text-lg">Entonnoir de Conversion</h3>
-                <p className="text-sm text-muted-foreground">De l'envoi au clic</p>
+                <h3 className="font-display font-semibold text-lg">Conversion Funnel</h3>
+                <p className="text-sm text-muted-foreground">From send to click</p>
               </div>
               <div className="space-y-4">
                 {funnelData.map((item, i) => {
@@ -469,7 +469,7 @@ export default function Analytics() {
             transition={{ delay: 0.4 }}
           >
             <GlassCard hover={false}>
-              <h3 className="font-display font-semibold text-lg mb-4">Messages par Type</h3>
+              <h3 className="font-display font-semibold text-lg mb-4">Messages by Type</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -508,7 +508,7 @@ export default function Analytics() {
             transition={{ delay: 0.5 }}
           >
             <GlassCard hover={false}>
-              <h3 className="font-display font-semibold text-lg mb-4">Croissance Abonnés</h3>
+              <h3 className="font-display font-semibold text-lg mb-4">Subscriber Growth</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={subscribersByDay}>
@@ -528,7 +528,7 @@ export default function Analytics() {
                       stroke="#10b981" 
                       fill="url(#subGradient)" 
                       strokeWidth={3}
-                      name="Total Abonnés"
+                      name="Total Subscribers"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -543,7 +543,7 @@ export default function Analytics() {
             transition={{ delay: 0.6 }}
           >
             <GlassCard hover={false}>
-              <h3 className="font-display font-semibold text-lg mb-4">Activité par Heure</h3>
+              <h3 className="font-display font-semibold text-lg mb-4">Activity by Hour</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={hourlyActivity} barCategoryGap="20%">
@@ -586,7 +586,7 @@ export default function Analytics() {
               {topPerformers.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Radio className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Aucun broadcast envoyé</p>
+                  <p>No broadcasts sent</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -640,23 +640,23 @@ export default function Analytics() {
             <GlassCard hover={false}>
               <div className="flex items-center gap-2 mb-4">
                 <Activity className="h-5 w-5 text-cyan-500" />
-                <h3 className="font-display font-semibold text-lg">Configuration Bot</h3>
+                <h3 className="font-display font-semibold text-lg">Bot Configuration</h3>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20">
                   <MessageCircle className="h-8 w-8 text-cyan-400 mb-2" />
-                  <p className="text-2xl font-bold">{stats.welcomeEnabled ? 'Actif' : 'Inactif'}</p>
-                  <p className="text-sm text-muted-foreground">Message Bienvenue</p>
+                  <p className="text-2xl font-bold">{stats.welcomeEnabled ? 'Active' : 'Inactive'}</p>
+                  <p className="text-sm text-muted-foreground">Welcome Message</p>
                 </div>
                 <div className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20">
                   <Zap className="h-8 w-8 text-purple-400 mb-2" />
                   <p className="text-2xl font-bold">{stats.responsesCount}</p>
-                  <p className="text-sm text-muted-foreground">Réponses Auto</p>
+                  <p className="text-sm text-muted-foreground">Auto Responses</p>
                 </div>
                 <div className="p-4 rounded-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
                   <Sparkles className="h-8 w-8 text-green-400 mb-2" />
                   <p className="text-2xl font-bold">{stats.sequencesCount}</p>
-                  <p className="text-sm text-muted-foreground">Messages Séquence</p>
+                  <p className="text-sm text-muted-foreground">Sequence Messages</p>
                 </div>
                 <div className="p-4 rounded-xl bg-gradient-to-br from-orange-500/10 to-red-500/10 border border-orange-500/20">
                   <Radio className="h-8 w-8 text-orange-400 mb-2" />
@@ -691,22 +691,22 @@ export default function Analytics() {
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-xl font-display font-bold">Score d'Engagement</h3>
-                  <p className="text-muted-foreground">Moyenne des taux de performance</p>
+                  <h3 className="text-xl font-display font-bold">Engagement Score</h3>
+                  <p className="text-muted-foreground">Average performance rates</p>
                 </div>
               </div>
               <div className="flex items-center gap-8">
                 <div className="text-center">
                   <p className="text-3xl font-bold text-cyan-400">{stats.deliveryRate}%</p>
-                  <p className="text-sm text-muted-foreground">Délivrabilité</p>
+                  <p className="text-sm text-muted-foreground">Deliverability</p>
                 </div>
                 <div className="text-center">
                   <p className="text-3xl font-bold text-purple-400">{stats.readRate}%</p>
-                  <p className="text-sm text-muted-foreground">Taux Lecture</p>
+                  <p className="text-sm text-muted-foreground">Read Rate</p>
                 </div>
                 <div className="text-center">
                   <p className="text-3xl font-bold text-pink-400">{stats.clickRate}%</p>
-                  <p className="text-sm text-muted-foreground">Taux Clic</p>
+                  <p className="text-sm text-muted-foreground">Click Rate</p>
                 </div>
               </div>
             </div>

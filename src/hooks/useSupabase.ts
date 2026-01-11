@@ -773,10 +773,159 @@ export function useFlows() {
 }
 
 // ============================================
-// DASHBOARD STATS HOOK
+// RECENT ACTIVITY HOOK (for Live Activity Feed with page_id filtering)
+// ============================================
+export interface RecentActivity {
+  id: string;
+  type: "subscriber" | "message_sent" | "message_delivered" | "message_read" | "button_click" | "error" | "success";
+  title: string;
+  timestamp: Date;
+}
+
+export function useRecentActivity(pageId?: string | null, limit: number = 15) {
+  const [activities, setActivities] = useState<RecentActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchActivity = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const hasPage = pageId && pageId !== 'demo';
+      
+      // Build queries with page filtering
+      let subscribersQuery = supabase
+        .from('subscribers')
+        .select('id, name_complet, first_name, created_at, page_id')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      let messagesQuery = supabase
+        .from('message_logs')
+        .select('id, status, source_type, sent_at, delivered_at, read_at, page_id')
+        .order('sent_at', { ascending: false })
+        .limit(20);
+      
+      let clicksQuery = supabase
+        .from('button_clicks')
+        .select('id, button_title, clicked_at, page_id')
+        .order('clicked_at', { ascending: false })
+        .limit(10);
+      
+      if (hasPage) {
+        subscribersQuery = subscribersQuery.eq('page_id', pageId);
+        messagesQuery = messagesQuery.eq('page_id', pageId);
+        clicksQuery = clicksQuery.eq('page_id', pageId);
+      }
+      
+      // Fetch recent data in parallel
+      const [subscribersRes, messagesRes, clicksRes] = await Promise.all([
+        subscribersQuery,
+        messagesQuery,
+        clicksQuery,
+      ]);
+
+      const allActivities: RecentActivity[] = [];
+
+      // Process subscribers
+      (subscribersRes.data || []).forEach(sub => {
+        const name = sub.name_complet || sub.first_name || 'Someone';
+        allActivities.push({
+          id: `sub-${sub.id}`,
+          type: 'subscriber',
+          title: `${name} joined as subscriber`,
+          timestamp: new Date(sub.created_at),
+        });
+      });
+
+      // Process message logs
+      (messagesRes.data || []).forEach(msg => {
+        const sourceLabel = {
+          'welcome': 'Welcome message',
+          'response': 'Response',
+          'sequence': 'Sequence message',
+          'broadcast': 'Broadcast',
+          'standard': 'Standard message',
+        }[msg.source_type] || 'Message';
+
+        if (msg.read_at) {
+          allActivities.push({
+            id: `read-${msg.id}`,
+            type: 'message_read',
+            title: `${sourceLabel} was read`,
+            timestamp: new Date(msg.read_at),
+          });
+        } else if (msg.delivered_at) {
+          allActivities.push({
+            id: `del-${msg.id}`,
+            type: 'message_delivered',
+            title: `${sourceLabel} was delivered`,
+            timestamp: new Date(msg.delivered_at),
+          });
+        } else if (msg.sent_at) {
+          allActivities.push({
+            id: `sent-${msg.id}`,
+            type: 'message_sent',
+            title: `${sourceLabel} was sent`,
+            timestamp: new Date(msg.sent_at),
+          });
+        }
+      });
+
+      // Process button clicks
+      (clicksRes.data || []).forEach(click => {
+        allActivities.push({
+          id: `click-${click.id}`,
+          type: 'button_click',
+          title: `"${click.button_title || 'Button'}" was clicked`,
+          timestamp: new Date(click.clicked_at),
+        });
+      });
+
+      // Sort by timestamp descending and limit
+      allActivities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      setActivities(allActivities.slice(0, limit));
+    } catch (err) {
+      console.error('Error fetching recent activity:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load activity');
+    } finally {
+      setLoading(false);
+    }
+  }, [pageId, limit]);
+
+  useEffect(() => { fetchActivity(); }, [fetchActivity]);
+
+  // Set up real-time subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('activity-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'subscribers' }, () => {
+        fetchActivity();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_logs' }, () => {
+        fetchActivity();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_logs' }, () => {
+        fetchActivity();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'button_clicks' }, () => {
+        fetchActivity();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchActivity]);
+
+  return { activities, loading, error, refetch: fetchActivity };
+}
+
+// ============================================
+// DASHBOARD STATS HOOK (with page_id filtering)
 // ============================================
 export interface DashboardStats {
-  // Abonnés
+  // Subscribers
   totalSubscribers: number;
   activeSubscribers: number;
   newSubscribersToday: number;
@@ -785,18 +934,18 @@ export interface DashboardStats {
   totalMessagesDelivered: number;
   totalMessagesRead: number;
   totalButtonClicks: number;
-  // Taux
+  // Rates
   deliveryRate: number;
   readRate: number;
   clickRate: number;
-  // Configuration
+  // Configuration (page-specific)
   welcomeMessageEnabled: boolean;
   responsesCount: number;
   sequenceMessagesCount: number;
   broadcastsCount: number;
 }
 
-export function useDashboardStats() {
+export function useDashboardStats(pageId?: string | null) {
   const [stats, setStats] = useState<DashboardStats>({
     totalSubscribers: 0,
     activeSubscribers: 0,
@@ -824,18 +973,59 @@ export function useDashboardStats() {
       today.setHours(0, 0, 0, 0);
       const todayISO = today.toISOString();
 
-      // Récupérer toutes les données en parallèle avec gestion d'erreur individuelle
+      // Build queries based on whether we have a pageId
+      const hasPage = pageId && pageId !== 'demo';
+
+      // Subscribers query - filter by page_id if available
+      let subscribersQuery = supabase.from('subscribers').select('id, is_active, is_subscribed, created_at, page_id');
+      if (hasPage) {
+        subscribersQuery = subscribersQuery.eq('page_id', pageId);
+      }
+
+      // Message logs query - filter by page_id if available
+      let messageLogsQuery = supabase.from('message_logs').select('id, status, sent_at, delivered_at, read_at, page_id');
+      if (hasPage) {
+        messageLogsQuery = messageLogsQuery.eq('page_id', pageId);
+      }
+
+      // Button clicks query - filter by page_id if available
+      let buttonClicksQuery = supabase.from('button_clicks').select('id, page_id');
+      if (hasPage) {
+        buttonClicksQuery = buttonClicksQuery.eq('page_id', pageId);
+      }
+
+      // Page configs query - filter by page_id for welcome message
+      let welcomeConfigQuery = supabase.from('page_configs')
+        .select('id, category, is_enabled')
+        .eq('category', 'welcome')
+        .eq('is_enabled', true);
+      if (hasPage) {
+        welcomeConfigQuery = welcomeConfigQuery.eq('page_id', pageId);
+      }
+
+      // Page configs count by category - filter by page_id
+      let responseConfigsQuery = supabase.from('page_configs').select('id').eq('category', 'response');
+      let sequenceConfigsQuery = supabase.from('page_configs').select('id').eq('category', 'sequence');
+      let broadcastConfigsQuery = supabase.from('page_configs').select('id').eq('category', 'broadcast');
+      
+      if (hasPage) {
+        responseConfigsQuery = responseConfigsQuery.eq('page_id', pageId);
+        sequenceConfigsQuery = sequenceConfigsQuery.eq('page_id', pageId);
+        broadcastConfigsQuery = broadcastConfigsQuery.eq('page_id', pageId);
+      }
+
+      // Fetch all data in parallel with individual error handling
       const results = await Promise.allSettled([
-        supabase.from('subscribers').select('id, is_active, is_subscribed, created_at'),
-        supabase.from('message_logs').select('id, status, sent_at, delivered_at, read_at'),
-        supabase.from('button_clicks').select('id'),
-        supabase.from('welcome_message').select('id, is_enabled').maybeSingle(),
-        supabase.from('responses').select('id'),
-        supabase.from('sequence_messages').select('id'),
-        supabase.from('broadcasts').select('id'),
+        subscribersQuery,
+        messageLogsQuery,
+        buttonClicksQuery,
+        welcomeConfigQuery.limit(1).maybeSingle(),
+        responseConfigsQuery,
+        sequenceConfigsQuery,
+        broadcastConfigsQuery,
       ]);
 
-      // Extraire les données avec valeurs par défaut pour les erreurs
+      // Extract data with default values for errors
       const subscribersRes = results[0].status === 'fulfilled' ? results[0].value : { data: [], error: null };
       const messagLogsRes = results[1].status === 'fulfilled' ? results[1].value : { data: [], error: null };
       const buttonClicksRes = results[2].status === 'fulfilled' ? results[2].value : { data: [], error: null };
@@ -848,7 +1038,7 @@ export function useDashboardStats() {
       const messages = messagLogsRes.data || [];
       const clicks = buttonClicksRes.data || [];
 
-      // Calculs
+      // Calculations
       const totalSubscribers = subscribers.length;
       const activeSubscribers = subscribers.filter(s => s.is_active && s.is_subscribed).length;
       const newSubscribersToday = subscribers.filter(s => s.created_at >= todayISO).length;
@@ -880,11 +1070,11 @@ export function useDashboardStats() {
       });
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageId]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
@@ -892,28 +1082,35 @@ export function useDashboardStats() {
 }
 
 // ============================================
-// MESSAGES BY TYPE HOOK (pour graphique Donut)
 // ============================================
-export function useMessagesByType() {
+// MESSAGES BY TYPE HOOK (with page_id filtering)
+// ============================================
+export function useMessagesByType(pageId?: string | null) {
   const [data, setData] = useState<{ name: string; value: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: messages, error } = await supabase
-        .from('message_logs')
-        .select('source_type');
+      const hasPage = pageId && pageId !== 'demo';
+      
+      let query = supabase.from('message_logs').select('source_type, page_id');
+      if (hasPage) {
+        query = query.eq('page_id', pageId);
+      }
+      
+      const { data: messages, error } = await query;
       
       if (error) throw error;
 
-      // Grouper par source_type
+      // Group by source_type
       const typeMap = new Map<string, number>();
       const typeLabels: Record<string, string> = {
-        'welcome': 'Bienvenue',
-        'response': 'Réponses',
-        'sequence': 'Séquence',
-        'broadcast': 'Broadcast'
+        'welcome': 'Welcome',
+        'response': 'Responses',
+        'sequence': 'Sequence',
+        'broadcast': 'Broadcast',
+        'standard': 'Standard'
       };
 
       (messages || []).forEach(msg => {
@@ -932,7 +1129,7 @@ export function useMessagesByType() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -940,45 +1137,52 @@ export function useMessagesByType() {
 }
 
 // ============================================
-// SUBSCRIBERS GROWTH HOOK (pour graphique Area)
+// SUBSCRIBERS GROWTH HOOK (with page_id filtering)
 // ============================================
-export function useSubscribersGrowth() {
+export function useSubscribersGrowth(pageId?: string | null) {
   const [data, setData] = useState<{ date: string; total: number; new: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: subscribers, error } = await supabase
-        .from('subscribers')
-        .select('created_at')
+      const hasPage = pageId && pageId !== 'demo';
+      
+      let query = supabase.from('subscribers')
+        .select('created_at, page_id')
         .order('created_at', { ascending: true });
+      
+      if (hasPage) {
+        query = query.eq('page_id', pageId);
+      }
+      
+      const { data: subscribers, error } = await query;
       
       if (error) throw error;
 
-      // Grouper par jour
+      // Group by day with English format
       const dayMap = new Map<string, number>();
       
       (subscribers || []).forEach(sub => {
-        const date = new Date(sub.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const date = new Date(sub.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
         dayMap.set(date, (dayMap.get(date) || 0) + 1);
       });
 
-      // Créer les données cumulatives
+      // Create cumulative data
       let cumulative = 0;
       const result = Array.from(dayMap.entries()).map(([date, count]) => {
         cumulative += count;
         return { date, new: count, total: cumulative };
       });
 
-      // Si pas assez de données, ajouter des jours fictifs pour le graphique
+      // If not enough data, add placeholder days for chart
       if (result.length < 2) {
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         
-        const todayStr = today.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-        const yesterdayStr = yesterday.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const todayStr = today.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+        const yesterdayStr = yesterday.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
         
         if (result.length === 0) {
           setData([
@@ -1000,7 +1204,7 @@ export function useSubscribersGrowth() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

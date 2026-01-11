@@ -10,9 +10,9 @@ interface GlassCardProps extends HTMLMotionProps<"div"> {
 const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
   ({ className, variant = "default", hover = true, children, ...props }, ref) => {
     const variants = {
-      default: "bg-white/5 backdrop-blur-xl border border-white/10",
-      strong: "bg-white/10 backdrop-blur-2xl border border-white/20",
-      glow: "bg-white/5 backdrop-blur-xl border border-primary/30 glow-primary",
+      default: "bg-white/5 dark:bg-white/5 light:bg-black/5 backdrop-blur-xl border border-white/10 dark:border-white/10 light:border-black/10",
+      strong: "bg-white/10 dark:bg-white/10 light:bg-black/10 backdrop-blur-2xl border border-white/20 dark:border-white/20 light:border-black/20",
+      glow: "bg-white/5 dark:bg-white/5 light:bg-black/5 backdrop-blur-xl border border-primary/30 glow-primary",
     };
 
     return (
@@ -21,7 +21,7 @@ const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
         className={cn(
           "rounded-2xl p-6",
           variants[variant],
-          hover && "transition-all duration-300 hover:bg-white/10 hover:border-white/20",
+          hover && "transition-all duration-300 hover:bg-white/10 dark:hover:bg-white/10 hover:border-white/20 dark:hover:border-white/20",
           className
         )}
         whileHover={hover ? { scale: 1.02 } : undefined}

@@ -13,10 +13,10 @@ interface PageCard {
   lastActivity: Date;
 }
 
-// Une seule page Facebook
+// Single Facebook page
 const currentPage: PageCard = {
   id: "1",
-  name: "Ma Page Facebook",
+  name: "My Facebook Page",
   avatar: "https://api.dicebear.com/7.x/shapes/svg?seed=mypage",
   subscribers: 1250,
   isActive: true,
@@ -27,7 +27,7 @@ export function PagesOverview() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-display font-semibold text-lg">Page Connectée</h3>
+        <h3 className="font-display font-semibold text-lg">Connected Page</h3>
         <Badge variant="outline" className="border-green-500/50 text-green-400">
           Active
         </Badge>
@@ -49,15 +49,15 @@ export function PagesOverview() {
                 <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
               </div>
               <p className="text-muted-foreground">
-                {currentPage.subscribers.toLocaleString()} abonnés
+                {currentPage.subscribers.toLocaleString()} subscribers
               </p>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Dernière activité: {formatDistanceToNow(currentPage.lastActivity, { addSuffix: true })}
+              Last activity: {formatDistanceToNow(currentPage.lastActivity, { addSuffix: true })}
             </p>
-            <Badge className="bg-primary/20 text-primary border-0">Connectée</Badge>
+            <Badge className="bg-primary/20 text-primary border-0">Connected</Badge>
           </div>
         </GlassCard>
       </motion.div>
