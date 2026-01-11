@@ -25,37 +25,44 @@ console.log('[App] Loading application...');
 
 const queryClient = new QueryClient();
 
+// Wrapper for protected routes with PageProvider
+const ProtectedWithPage = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute>
+    <PageProvider>
+      {children}
+    </PageProvider>
+  </ProtectedRoute>
+);
+
 const App = () => (
   <ErrorBoundary>
   <QueryClientProvider client={queryClient}>
     <SettingsProvider>
-      <PageProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
           <Routes>
-            {/* Public routes */}
+            {/* Public routes - NO PageProvider */}
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             
-            {/* Protected routes */}
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/subscribers" element={<ProtectedRoute><Subscribers /></ProtectedRoute>} />
-            <Route path="/flows" element={<ProtectedRoute><Flows /></ProtectedRoute>} />
-            <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-            <Route path="/welcome" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
-            <Route path="/responses" element={<ProtectedRoute><Responses /></ProtectedRoute>} />
-            <Route path="/sequences" element={<ProtectedRoute><Sequences /></ProtectedRoute>} />
-            <Route path="/broadcasts" element={<ProtectedRoute><Broadcasts /></ProtectedRoute>} />
-            <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            {/* Protected routes - WITH PageProvider */}
+            <Route path="/dashboard" element={<ProtectedWithPage><Dashboard /></ProtectedWithPage>} />
+            <Route path="/subscribers" element={<ProtectedWithPage><Subscribers /></ProtectedWithPage>} />
+            <Route path="/flows" element={<ProtectedWithPage><Flows /></ProtectedWithPage>} />
+            <Route path="/analytics" element={<ProtectedWithPage><Analytics /></ProtectedWithPage>} />
+            <Route path="/welcome" element={<ProtectedWithPage><Welcome /></ProtectedWithPage>} />
+            <Route path="/responses" element={<ProtectedWithPage><Responses /></ProtectedWithPage>} />
+            <Route path="/sequences" element={<ProtectedWithPage><Sequences /></ProtectedWithPage>} />
+            <Route path="/broadcasts" element={<ProtectedWithPage><Broadcasts /></ProtectedWithPage>} />
+            <Route path="/configuration" element={<ProtectedWithPage><Configuration /></ProtectedWithPage>} />
+            <Route path="/settings" element={<ProtectedWithPage><Settings /></ProtectedWithPage>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-          </TooltipProvider>
-        </PageProvider>
-      </SettingsProvider>
+      </TooltipProvider>
+    </SettingsProvider>
   </QueryClientProvider>
   </ErrorBoundary>
 );
