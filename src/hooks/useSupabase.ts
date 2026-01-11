@@ -2,25 +2,38 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 // Types basés sur la nouvelle structure Supabase
+// Compatible avec les deux formats possibles de la table subscribers
 export interface Subscriber {
   id: string;
-  page_id: string;
-  facebook_psid: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  is_active: boolean | null;
-  subscribed_at: string;
-  last_message_at: string | null;
-  flow_progress: number | null;
-  flow_total_steps: number | null;
-  // Aliases pour compatibilité avec l'UI existante
+  // Nouveau format
+  page_id?: string;
+  facebook_psid?: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  is_active?: boolean | null;
+  subscribed_at?: string;
+  last_message_at?: string | null;
+  flow_progress?: number | null;
+  flow_total_steps?: number | null;
+  // Ancien format (pour compatibilité)
+  facebook_id?: string;
   psid?: string;
   name_complet?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   profile_pic?: string | null;
+  locale?: string | null;
+  timezone?: number | null;
+  gender?: string | null;
+  is_subscribed?: boolean;
+  unsubscribed_at?: string | null;
+  tags?: string[];
+  custom_fields?: Record<string, unknown>;
+  last_interaction?: string | null;
   total_messages_received?: number;
   total_messages_sent?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface WelcomeMessage {
@@ -295,24 +308,37 @@ export function useSubscribers(pageId?: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchSubscribers = useCallback(async () => {
+    console.log('[useSubscribers] Fetching ALL subscribers...');
     setLoading(true);
     try {
-      let query = supabase
+      // Always fetch ALL subscribers without any filter
+      const { data, error: queryError } = await supabase
         .from('subscribers')
         .select('*')
         .order('subscribed_at', { ascending: false });
       
-      // Filtrer par page_id si fourni
-      if (pageId) {
-        query = query.eq('page_id', pageId);
+      console.log('[useSubscribers] Raw response - data:', data);
+      console.log('[useSubscribers] Raw response - error:', queryError);
+      console.log('[useSubscribers] Count:', data?.length || 0);
+      
+      if (queryError) {
+        console.error('[useSubscribers] Query error:', queryError);
+        setError(queryError.message);
+        return;
       }
       
-      const { data, error } = await query;
+      // If pageId is provided, filter client-side (optional)
+      let result = data || [];
+      if (pageId && pageId !== 'demo') {
+        result = result.filter((s: any) => s.page_id === pageId);
+        console.log('[useSubscribers] Filtered by pageId:', pageId, '- Count:', result.length);
+      }
       
-      if (error) throw error;
-      setSubscribers((data as Subscriber[]) || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors du chargement');
+      setSubscribers(result as Subscriber[]);
+      setError(null);
+    } catch (err: any) {
+      console.error('[useSubscribers] Exception:', err);
+      setError(err?.message || 'Erreur lors du chargement');
     } finally {
       setLoading(false);
     }
@@ -322,8 +348,8 @@ export function useSubscribers(pageId?: string | null) {
 
   const getStats = () => ({
     total: subscribers.length,
-    active: subscribers.filter(s => s.is_active).length,
-    inactive: subscribers.filter(s => !s.is_active).length,
+    active: subscribers.filter(s => s.is_active === true).length,
+    inactive: subscribers.filter(s => s.is_active === false || s.is_active === null).length,
   });
 
   return { subscribers, loading, error, refetch: fetchSubscribers, getStats };

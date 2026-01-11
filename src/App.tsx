@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { PageProvider } from "@/contexts/PageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Dashboard from "./pages/DashboardV2";
 import Subscribers from "./pages/Subscribers";
@@ -34,8 +35,11 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
           <Routes>
+            {/* Public routes */}
+            <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            
+            {/* Protected routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/subscribers" element={<ProtectedRoute><Subscribers /></ProtectedRoute>} />
             <Route path="/flows" element={<ProtectedRoute><Flows /></ProtectedRoute>} />

@@ -13,14 +13,17 @@ import { useState } from "react";
 
 export default function Subscribers() {
   const { currentPage } = usePage();
+  // Filter subscribers by current page
   const { subscribers, loading, error, refetch, getStats } = useSubscribers(currentPage?.id);
   const [searchTerm, setSearchTerm] = useState("");
   const stats = getStats();
 
-  const filteredSubscribers = subscribers.filter(sub => 
-    sub.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sub.facebook_psid?.includes(searchTerm)
-  );
+  const filteredSubscribers = subscribers.filter(sub => {
+    const name = sub.full_name || sub.name_complet || sub.first_name || '';
+    const psid = sub.facebook_psid || sub.psid || '';
+    return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           psid.includes(searchTerm);
+  });
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -68,8 +71,19 @@ export default function Subscribers() {
         </GlassCard>
 
         {error && (
-          <GlassCard hover={false} className="p-4 border-destructive/50">
-            <p className="text-destructive">Error: {error}</p>
+          <GlassCard hover={false} className="p-4 border-destructive/50 bg-destructive/10">
+            <p className="text-destructive font-medium">❌ Error loading subscribers:</p>
+            <p className="text-destructive text-sm mt-1">{error}</p>
+            <p className="text-muted-foreground text-xs mt-2">Check browser console (F12) for more details</p>
+          </GlassCard>
+        )}
+
+        {!loading && !error && subscribers.length === 0 && (
+          <GlassCard hover={false} className="p-4 border-yellow-500/50 bg-yellow-500/10">
+            <p className="text-yellow-500 font-medium">⚠️ No subscribers in database</p>
+            <p className="text-muted-foreground text-sm mt-1">
+              The subscribers table might be empty or RLS policies might be blocking access.
+            </p>
           </GlassCard>
         )}
 
@@ -99,7 +113,16 @@ export default function Subscribers() {
                 </tr>
               </thead>
               <tbody>
-                {filteredSubscribers.map((sub, index) => (
+                {filteredSubscribers.map((sub, index) => {
+                  // Compatible avec les deux formats de table
+                  const displayName = sub.full_name || sub.name_complet || `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || 'Unknown User';
+                  const displayPsid = sub.facebook_psid || sub.psid || '';
+                  const displayAvatar = sub.avatar_url || sub.profile_pic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayPsid}`;
+                  const displayDate = sub.subscribed_at || sub.created_at || '';
+                  const displayLastMessage = sub.last_message_at || sub.last_interaction;
+                  const isActive = sub.is_active ?? sub.is_subscribed ?? true;
+                  
+                  return (
                   <motion.tr
                     key={sub.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -110,32 +133,33 @@ export default function Subscribers() {
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={sub.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${sub.facebook_psid}`} />
-                          <AvatarFallback>{(sub.full_name || 'U')[0]}</AvatarFallback>
+                          <AvatarImage src={displayAvatar} />
+                          <AvatarFallback>{displayName[0]}</AvatarFallback>
                         </Avatar>
-                        <span className="font-medium">{sub.full_name || 'Unknown User'}</span>
+                        <span className="font-medium">{displayName}</span>
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <code className="text-xs bg-white/10 px-2 py-1 rounded">{sub.facebook_psid}</code>
+                      <code className="text-xs bg-white/10 px-2 py-1 rounded">{displayPsid}</code>
                     </td>
-                    <td className="py-4 px-4 text-muted-foreground">{formatDate(sub.subscribed_at)}</td>
+                    <td className="py-4 px-4 text-muted-foreground">{displayDate ? formatDate(displayDate) : 'N/A'}</td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        {sub.last_message_at ? formatDate(sub.last_message_at) : 'No messages'}
+                        {displayLastMessage ? formatDate(displayLastMessage) : 'No messages'}
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <span className={`flex items-center gap-2 text-sm ${sub.is_active ? 'text-success' : 'text-muted-foreground'}`}>
-                        <span className={`h-2 w-2 rounded-full ${sub.is_active ? 'bg-success' : 'bg-muted-foreground'}`} />
-                        {sub.is_active ? 'Active' : 'Inactive'}
+                      <span className={`flex items-center gap-2 text-sm ${isActive ? 'text-success' : 'text-muted-foreground'}`}>
+                        <span className={`h-2 w-2 rounded-full ${isActive ? 'bg-success' : 'bg-muted-foreground'}`} />
+                        {isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-right">
                       <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                     </td>
                   </motion.tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
