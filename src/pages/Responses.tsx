@@ -119,10 +119,10 @@ export default function Responses() {
         name: selectedMessage.name,
         is_active: selectedMessage.is_active,
         keywords: selectedMessage.keywords || [],
-        text_content: selectedMessage.text_content || null,
-        title: selectedMessage.title || null,
-        subtitle: selectedMessage.subtitle || null,
-        image_url: selectedMessage.image_url || null,
+        text_content: selectedMessage.text_content || "",
+        title: selectedMessage.title || "",
+        subtitle: selectedMessage.subtitle || "",
+        image_url: selectedMessage.image_url || "",
         buttons: selectedMessage.buttons || []
       });
       setHasChanges(false);
@@ -137,10 +137,10 @@ export default function Responses() {
       name: editName,
       is_active: isEnabled,
       keywords: keywords,
-      text_content: messageType === "text" ? textMessage : null,
-      title: messageType === "template" ? templateElement.title : null,
-      subtitle: messageType === "template" ? templateElement.subtitle : null,
-      image_url: messageType === "template" ? templateElement.image_url : null,
+      text_content: messageType === "text" ? textMessage : "",
+      title: messageType === "template" ? templateElement.title : "",
+      subtitle: messageType === "template" ? templateElement.subtitle : "",
+      image_url: messageType === "template" ? templateElement.image_url : "",
       buttons: messageType === "template" ? templateElement.buttons : []
     });
     

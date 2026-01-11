@@ -123,10 +123,10 @@ export default function Sequences() {
       originalDataRef.current = JSON.stringify({
         name: selectedMessage.name,
         is_active: selectedMessage.is_active,
-        text_content: selectedMessage.text_content || null,
-        title: selectedMessage.title || null,
-        subtitle: selectedMessage.subtitle || null,
-        image_url: selectedMessage.image_url || null,
+        text_content: selectedMessage.text_content || "",
+        title: selectedMessage.title || "",
+        subtitle: selectedMessage.subtitle || "",
+        image_url: selectedMessage.image_url || "",
         buttons: selectedMessage.buttons || []
       });
       setHasChanges(false);
@@ -140,10 +140,10 @@ export default function Sequences() {
     const currentData = JSON.stringify({
       name: editName,
       is_active: isEnabled,
-      text_content: messageType === "text" ? textMessage : null,
-      title: messageType === "template" ? templateElement.title : null,
-      subtitle: messageType === "template" ? templateElement.subtitle : null,
-      image_url: messageType === "template" ? templateElement.image_url : null,
+      text_content: messageType === "text" ? textMessage : "",
+      title: messageType === "template" ? templateElement.title : "",
+      subtitle: messageType === "template" ? templateElement.subtitle : "",
+      image_url: messageType === "template" ? templateElement.image_url : "",
       buttons: messageType === "template" ? templateElement.buttons : []
     });
     
