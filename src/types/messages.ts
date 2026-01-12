@@ -5,7 +5,7 @@
 
 // 4 categories: Welcome, Standard Reply (response), Sequence, Broadcast
 export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast';
-export type SelectionMode = 'random' | 'fixed' | 'ordered';
+export type SelectionMode = 'random' | 'fixed';
 export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 
 // =====================================================================================
@@ -208,12 +208,10 @@ export const CATEGORY_DESCRIPTIONS: Record<MessageCategory, string> = {
 export const SELECTION_MODE_LABELS: Record<SelectionMode, string> = {
   random: 'Random',
   fixed: 'Fixed',
-  ordered: 'Ordered',
 };
 
 // Selection mode descriptions
 export const SELECTION_MODE_DESCRIPTIONS: Record<SelectionMode, string> = {
   random: 'Pick a random message from the selection (weighted)',
   fixed: 'Always use the same specific message',
-  ordered: 'Send messages in order (for sequences)',
 };

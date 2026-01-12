@@ -218,16 +218,20 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
 
   const upsertConfig = async (config: PageConfigInsert): Promise<PageConfig | null> => {
     try {
-      console.log('[usePageConfigs] Upserting config:', config);
+      console.log('[usePageConfigs] Upserting config:', JSON.stringify(config, null, 2));
       
-      // First, try to find existing config
-      const { data: existing, error: selectError } = await supabase
+      // First, try to find existing config by page_id and category only
+      // Use .limit(1) instead of .maybeSingle() to handle duplicates gracefully
+      const { data: existingList, error: selectError } = await supabase
         .from('page_configs')
-        .select('id')
+        .select('id, name')
         .eq('page_id', config.page_id)
         .eq('category', config.category)
-        .eq('name', config.name)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      const existing = existingList?.[0] || null;
+      console.log('[usePageConfigs] Existing config found:', existing);
       
       if (selectError) {
         console.error('[usePageConfigs] Select error:', selectError);
@@ -239,25 +243,30 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       if (existing?.id) {
         // Update existing config
         console.log('[usePageConfigs] Updating existing config:', existing.id);
+        const updateData = {
+          name: config.name, // Also update name in case it changed
+          selected_message_ids: config.selected_message_ids || [],
+          selection_mode: config.selection_mode || 'random',
+          fixed_message_id: config.fixed_message_id || null,
+          trigger_keywords: config.trigger_keywords || [],
+          delay_hours: config.delay_hours || [],
+          scheduled_time: config.scheduled_time || null,
+          messages_count: config.messages_count || 1,
+          is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
+          updated_at: new Date().toISOString(),
+        };
+        console.log('[usePageConfigs] Update data:', JSON.stringify(updateData, null, 2));
+        
         const { error: updateError } = await supabase
           .from('page_configs')
-          .update({
-            selected_message_ids: config.selected_message_ids || [],
-            selection_mode: config.selection_mode || 'random',
-            fixed_message_id: config.fixed_message_id || null,
-            trigger_keywords: config.trigger_keywords || [],
-            delay_hours: config.delay_hours || [],
-            scheduled_time: config.scheduled_time || null,
-            messages_count: config.messages_count || 1,
-            is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', existing.id);
         
         if (updateError) {
           console.error('[usePageConfigs] Update error:', updateError);
           throw updateError;
         }
+        console.log('[usePageConfigs] Update successful');
         resultId = existing.id;
       } else {
         // Insert new config

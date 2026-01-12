@@ -18,7 +18,6 @@ import {
   Save,
   Shuffle,
   Target,
-  ListOrdered,
   Clock,
   CheckCircle,
   AlertCircle
@@ -51,7 +50,6 @@ const CATEGORY_ICONS: Record<MessageCategory, React.ElementType> = {
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
   random: Shuffle,
   fixed: Target,
-  ordered: ListOrdered,
 };
 
 interface TriggerConfig {
@@ -95,7 +93,7 @@ export default function Configuration() {
   const [triggerConfigs, setTriggerConfigs] = useState<Record<MessageCategory, TriggerConfig>>({
     welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
     response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'ordered', messages_count: 1, delay_hours: [24], scheduled_time: null, selected_message_ids: [] },
+    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [24], scheduled_time: null, selected_message_ids: [] },
     broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
   });
 
@@ -167,6 +165,7 @@ export default function Configuration() {
   const toggleMessageSelection = (category: MessageCategory, messageId: string) => {
     const current = triggerConfigs[category].selected_message_ids;
     const currentDelays = triggerConfigs[category].delay_hours;
+    const mode = triggerConfigs[category].selection_mode;
     
     if (current.includes(messageId)) {
       // Removing message
@@ -177,15 +176,25 @@ export default function Configuration() {
       updateLocalConfig(category, 'delay_hours', newDelays);
     } else {
       // Adding message
-      const newSelection = [...current, messageId];
-      let newDelays = [...currentDelays];
+      let newSelection: string[];
+      let newDelays: number[];
       
-      if (category === 'sequence') {
-        // For sequences: default to next 24h increment (0, 24, 48, 72...)
-        newDelays.push(currentDelays.length * 24);
-      } else if (category === 'broadcast') {
-        // For broadcasts: default to 9:00 AM (540 minutes)
-        newDelays.push(540);
+      // If mode is 'fixed', only allow 1 message
+      if (mode === 'fixed') {
+        newSelection = [messageId]; // Replace all with this one
+        newDelays = category === 'broadcast' ? [540] : [0]; // Single delay
+      } else {
+        // For 'random' mode, allow multiple
+        newSelection = [...current, messageId];
+        newDelays = [...currentDelays];
+        
+        if (category === 'sequence') {
+          // For sequences: default to next 24h increment (0, 24, 48, 72...)
+          newDelays.push(currentDelays.length * 24);
+        } else if (category === 'broadcast') {
+          // For broadcasts: default to 9:00 AM (540 minutes)
+          newDelays.push(540);
+        }
       }
       
       updateLocalConfig(category, 'selected_message_ids', newSelection);
@@ -194,7 +203,11 @@ export default function Configuration() {
   };
 
   const handleSave = async (category: MessageCategory) => {
+    console.log('[Configuration] handleSave called for category:', category);
+    console.log('[Configuration] currentPage:', currentPage);
+    
     if (!currentPage?.id) {
+      console.error('[Configuration] No currentPage.id available!');
       toast({
         title: "❌ Error",
         description: "No page selected. Please select a page first.",
@@ -205,6 +218,7 @@ export default function Configuration() {
     
     // Skip demo page
     if (currentPage.id === 'demo') {
+      console.warn('[Configuration] Demo page detected, cannot save');
       toast({
         title: "⚠️ Demo Mode",
         description: "Cannot save configuration for demo page. Please create a real page first.",
@@ -221,7 +235,7 @@ export default function Configuration() {
       console.log('[Configuration] Page ID:', currentPage.id);
       console.log('[Configuration] Config:', JSON.stringify(config, null, 2));
       
-      const result = await upsertConfig({
+      const configToSave = {
         page_id: currentPage.id,
         category: category,
         name: `${CATEGORY_LABELS[category]} Config`,
@@ -231,7 +245,11 @@ export default function Configuration() {
         delay_hours: config.delay_hours,
         scheduled_time: config.scheduled_time,
         selected_message_ids: config.selected_message_ids,
-      });
+      };
+      
+      console.log('[Configuration] Config to save:', JSON.stringify(configToSave, null, 2));
+      
+      const result = await upsertConfig(configToSave);
       
       console.log('[Configuration] Save result:', result);
       
@@ -340,7 +358,7 @@ export default function Configuration() {
                           onValueChange={(v) => updateLocalConfig(category, 'selection_mode', v as SelectionMode)}
                           className="space-y-2"
                         >
-                          {(['random', 'fixed', 'ordered'] as SelectionMode[]).map(mode => {
+                          {(['random', 'fixed'] as SelectionMode[]).map(mode => {
                             const ModeIcon = MODE_ICONS[mode];
                             return (
                               <div key={mode} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors">
