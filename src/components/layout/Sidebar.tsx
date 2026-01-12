@@ -32,7 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePage } from "@/contexts/PageContext";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Configuration", href: "/configuration", icon: Sliders },
   { name: "Subscribers", href: "/subscribers", icon: Users },
   { name: "Welcome", href: "/welcome", icon: MessageSquare },

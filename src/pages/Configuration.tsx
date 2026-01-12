@@ -129,8 +129,12 @@ export default function Configuration() {
       // Store original for change detection
       originalConfigsRef.current = JSON.stringify(newConfigs);
       setChangedCategories(new Set());
+    } else if (!configsLoading && !originalConfigsRef.current) {
+      // No configs exist yet - initialize original with current defaults
+      // This allows detecting changes when creating new configs
+      originalConfigsRef.current = JSON.stringify(triggerConfigs);
     }
-  }, [configs]);
+  }, [configs, configsLoading]);
 
   // Detect changes when editing
   useEffect(() => {
@@ -164,41 +168,25 @@ export default function Configuration() {
 
   const toggleMessageSelection = (category: MessageCategory, messageId: string) => {
     const current = triggerConfigs[category].selected_message_ids;
-    const currentDelays = triggerConfigs[category].delay_hours;
     const mode = triggerConfigs[category].selection_mode;
     
     if (current.includes(messageId)) {
       // Removing message
-      const index = current.indexOf(messageId);
       const newSelection = current.filter(id => id !== messageId);
-      const newDelays = currentDelays.filter((_, i) => i !== index);
       updateLocalConfig(category, 'selected_message_ids', newSelection);
-      updateLocalConfig(category, 'delay_hours', newDelays);
     } else {
       // Adding message
       let newSelection: string[];
-      let newDelays: number[];
       
       // If mode is 'fixed', only allow 1 message
       if (mode === 'fixed') {
         newSelection = [messageId]; // Replace all with this one
-        newDelays = category === 'broadcast' ? [540] : [0]; // Single delay
       } else {
         // For 'random' mode, allow multiple
         newSelection = [...current, messageId];
-        newDelays = [...currentDelays];
-        
-        if (category === 'sequence') {
-          // For sequences: default to next 24h increment (0, 24, 48, 72...)
-          newDelays.push(currentDelays.length * 24);
-        } else if (category === 'broadcast') {
-          // For broadcasts: default to 9:00 AM (540 minutes)
-          newDelays.push(540);
-        }
       }
       
       updateLocalConfig(category, 'selected_message_ids', newSelection);
-      updateLocalConfig(category, 'delay_hours', newDelays);
     }
   };
 
@@ -235,6 +223,30 @@ export default function Configuration() {
       console.log('[Configuration] Page ID:', currentPage.id);
       console.log('[Configuration] Config:', JSON.stringify(config, null, 2));
       
+      // Ensure delay_hours is appropriate for each category
+      let delayHoursToSave: number[];
+      
+      if (category === 'welcome' || category === 'response') {
+        // Welcome and Response send immediately - no delays needed
+        delayHoursToSave = [0];
+      } else if (category === 'sequence') {
+        // Sequence uses hours after subscription
+        delayHoursToSave = config.delay_hours.slice(0, config.messages_count);
+        // Pad with defaults if shorter
+        while (delayHoursToSave.length < config.messages_count) {
+          delayHoursToSave.push(delayHoursToSave.length * 24);
+        }
+      } else if (category === 'broadcast') {
+        // Broadcast uses daily send times (stored as minutes)
+        delayHoursToSave = config.delay_hours.slice(0, config.messages_count);
+        // Pad with defaults if shorter
+        while (delayHoursToSave.length < config.messages_count) {
+          delayHoursToSave.push(540 + delayHoursToSave.length * 180); // 9:00, 12:00, 15:00...
+        }
+      } else {
+        delayHoursToSave = [0];
+      }
+      
       const configToSave = {
         page_id: currentPage.id,
         category: category,
@@ -242,7 +254,7 @@ export default function Configuration() {
         is_enabled: config.is_enabled,
         selection_mode: config.selection_mode,
         messages_count: config.messages_count,
-        delay_hours: config.delay_hours,
+        delay_hours: delayHoursToSave,
         scheduled_time: config.scheduled_time,
         selected_message_ids: config.selected_message_ids,
       };
