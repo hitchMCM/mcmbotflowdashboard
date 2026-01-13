@@ -1044,6 +1044,10 @@ export function useDashboardStats(pageId?: string | null) {
         broadcastConfigsQuery = broadcastConfigsQuery.eq('page_id', pageId);
       }
 
+      // Messages stats query - get sent_count, delivered_count, read_count from messages table
+      // This is needed because stats can be stored directly on messages (updated by backend)
+      let messagesStatsQuery = supabase.from('messages').select('sent_count, delivered_count, read_count, clicked_count');
+
       // Fetch all data in parallel with individual error handling
       const results = await Promise.allSettled([
         subscribersQuery,
@@ -1053,6 +1057,7 @@ export function useDashboardStats(pageId?: string | null) {
         responseConfigsQuery,
         sequenceConfigsQuery,
         broadcastConfigsQuery,
+        messagesStatsQuery,
       ]);
 
       // Extract data with default values for errors
@@ -1063,20 +1068,34 @@ export function useDashboardStats(pageId?: string | null) {
       const responsesRes = results[4].status === 'fulfilled' ? results[4].value : { data: [], error: null };
       const sequenceMessagesRes = results[5].status === 'fulfilled' ? results[5].value : { data: [], error: null };
       const broadcastsRes = results[6].status === 'fulfilled' ? results[6].value : { data: [], error: null };
+      const messagesStatsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [], error: null };
 
       const subscribers = subscribersRes.data || [];
-      const messages = messagLogsRes.data || [];
+      const messageLogs = messagLogsRes.data || [];
       const clicks = buttonClicksRes.data || [];
+      const messagesStats = messagesStatsRes.data || [];
 
-      // Calculations
+      // Calculate stats from message_logs (individual log entries)
+      const logsSentCount = messageLogs.length;
+      const logsDeliveredCount = messageLogs.filter(m => m.delivered_at || m.status === 'delivered' || m.status === 'read').length;
+      const logsReadCount = messageLogs.filter(m => m.read_at || m.status === 'read').length;
+
+      // Calculate stats from messages table (aggregated counters on messages)
+      const msgSentCount = messagesStats.reduce((sum, m) => sum + (m.sent_count || 0), 0);
+      const msgDeliveredCount = messagesStats.reduce((sum, m) => sum + (m.delivered_count || 0), 0);
+      const msgReadCount = messagesStats.reduce((sum, m) => sum + (m.read_count || 0), 0);
+      const msgClickedCount = messagesStats.reduce((sum, m) => sum + (m.clicked_count || 0), 0);
+
+      // Use the maximum of both sources (in case one is not being updated)
+      const totalMessagesSent = Math.max(logsSentCount, msgSentCount);
+      const totalMessagesDelivered = Math.max(logsDeliveredCount, msgDeliveredCount);
+      const totalMessagesRead = Math.max(logsReadCount, msgReadCount);
+      const totalButtonClicks = Math.max(clicks.length, msgClickedCount);
+
+      // Subscriber calculations
       const totalSubscribers = subscribers.length;
       const activeSubscribers = subscribers.filter(s => s.is_active && s.is_subscribed).length;
       const newSubscribersToday = subscribers.filter(s => s.created_at >= todayISO).length;
-
-      const totalMessagesSent = messages.length;
-      const totalMessagesDelivered = messages.filter(m => m.delivered_at || m.status === 'delivered' || m.status === 'read').length;
-      const totalMessagesRead = messages.filter(m => m.read_at || m.status === 'read').length;
-      const totalButtonClicks = clicks.length;
 
       const deliveryRate = totalMessagesSent > 0 ? Math.round((totalMessagesDelivered / totalMessagesSent) * 100) : 0;
       const readRate = totalMessagesDelivered > 0 ? Math.round((totalMessagesRead / totalMessagesDelivered) * 100) : 0;

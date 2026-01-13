@@ -175,26 +175,26 @@ const footerLinks = {
   product: [
     { name: "Features", href: "#features" },
     { name: "Pricing", href: "#pricing" },
-    { name: "Integrations", href: "#" },
-    { name: "API Documentation", href: "#" }
+    { name: "Integrations", href: "/dashboard" },
+    { name: "API Documentation", href: "/help" }
   ],
   company: [
-    { name: "About Us", href: "#" },
-    { name: "Careers", href: "#" },
-    { name: "Blog", href: "#" },
-    { name: "Press Kit", href: "#" }
+    { name: "About Us", href: "/about" },
+    { name: "Careers", href: "/careers" },
+    { name: "Blog", href: "/blog" },
+    { name: "Press Kit", href: "/about" }
   ],
   resources: [
-    { name: "Help Center", href: "#" },
-    { name: "Community", href: "#" },
-    { name: "Tutorials", href: "#" },
-    { name: "Status", href: "#" }
+    { name: "Help Center", href: "/help" },
+    { name: "Community", href: "/blog" },
+    { name: "Tutorials", href: "/help" },
+    { name: "Status", href: "/dashboard" }
   ],
   legal: [
-    { name: "Privacy Policy", href: "#" },
-    { name: "Terms of Service", href: "#" },
-    { name: "Cookie Policy", href: "#" },
-    { name: "GDPR", href: "#" }
+    { name: "Privacy Policy", href: "/privacy" },
+    { name: "Terms of Service", href: "/terms" },
+    { name: "Cookie Policy", href: "/privacy" },
+    { name: "GDPR", href: "/privacy" }
   ]
 };
 

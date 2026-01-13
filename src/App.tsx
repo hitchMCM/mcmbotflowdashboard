@@ -19,6 +19,12 @@ import Welcome from "./pages/Welcome";
 import Responses from "./pages/Responses";
 import Sequences from "./pages/Sequences";
 import Broadcasts from "./pages/Broadcasts";
+import About from "./pages/About";
+import Careers from "./pages/Careers";
+import Blog from "./pages/Blog";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
 
 console.log('[App] Loading application...');
@@ -46,6 +52,12 @@ const App = () => (
             {/* Public routes - NO PageProvider */}
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/careers" element={<Careers />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/help" element={<HelpCenter />} />
             
             {/* Protected routes - WITH PageProvider */}
             <Route path="/dashboard" element={<ProtectedWithPage><Dashboard /></ProtectedWithPage>} />
