@@ -251,6 +251,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
           trigger_keywords: config.trigger_keywords || [],
           delay_hours: config.delay_hours || [],
           scheduled_time: config.scheduled_time || null,
+          scheduled_times: config.scheduled_times || null,
           messages_count: config.messages_count || 1,
           is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
           updated_at: new Date().toISOString(),
@@ -283,6 +284,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
             trigger_keywords: config.trigger_keywords || [],
             delay_hours: config.delay_hours || [],
             scheduled_time: config.scheduled_time || null,
+            scheduled_times: config.scheduled_times || null,
             messages_count: config.messages_count || 1,
             is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
           })

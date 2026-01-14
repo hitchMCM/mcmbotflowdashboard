@@ -247,6 +247,20 @@ export default function Configuration() {
         delayHoursToSave = [0];
       }
       
+      // For broadcast, convert ALL delay_hours values (minutes from midnight) to TIME format
+      let scheduledTimeToSave: string | null = null;
+      let scheduledTimesToSave: string[] | null = null;
+      if (category === 'broadcast' && delayHoursToSave.length > 0) {
+        // Convert all times to TIME format array
+        scheduledTimesToSave = delayHoursToSave.map(m => {
+          const hours = Math.floor(m / 60);
+          const minutes = m % 60;
+          return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+        });
+        // Keep first time in scheduled_time for backward compatibility
+        scheduledTimeToSave = scheduledTimesToSave[0];
+      }
+      
       const configToSave = {
         page_id: currentPage.id,
         category: category,
@@ -255,7 +269,8 @@ export default function Configuration() {
         selection_mode: config.selection_mode,
         messages_count: config.messages_count,
         delay_hours: delayHoursToSave,
-        scheduled_time: config.scheduled_time,
+        scheduled_time: category === 'broadcast' ? scheduledTimeToSave : config.scheduled_time,
+        scheduled_times: category === 'broadcast' ? scheduledTimesToSave : null,
         selected_message_ids: config.selected_message_ids,
       };
       

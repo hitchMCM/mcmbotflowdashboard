@@ -91,6 +91,7 @@ export interface PageConfig {
   
   // Timing (broadcasts)
   scheduled_time: string | null;
+  scheduled_times: string[] | null;
   scheduled_date: string | null;
   
   // Keywords (responses)
@@ -115,6 +116,7 @@ export interface PageConfigInsert {
   messages_count?: number;
   delay_hours?: number[];
   scheduled_time?: string | null;
+  scheduled_times?: string[] | null;
   scheduled_date?: string | null;
   trigger_keywords?: string[];
   is_enabled?: boolean;
