@@ -93,7 +93,7 @@ export default function Configuration() {
   const [triggerConfigs, setTriggerConfigs] = useState<Record<MessageCategory, TriggerConfig>>({
     welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
     response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [24], scheduled_time: null, selected_message_ids: [] },
+    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [1440], scheduled_time: null, selected_message_ids: [] },
     broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
   });
 
@@ -424,20 +424,22 @@ export default function Configuration() {
                         </div>
                       )}
 
-                      {/* Sequence Configuration - Hours after subscription based on messages_count */}
+                      {/* Sequence Configuration - Hours and Minutes after subscription based on messages_count */}
                       {category === 'sequence' && (
                         <div className="space-y-4">
                           <Label className="flex items-center gap-2 text-sm font-medium">
                             <Clock className="h-4 w-4" />
-                            Hours After Subscription
+                            Time After Subscription
                           </Label>
                           <p className="text-xs text-muted-foreground">
-                            Configure how many hours after subscription each message is sent.
+                            Configure how long after subscription each message is sent (hours and minutes).
                           </p>
                           <div className="space-y-2 max-h-48 overflow-y-auto">
                             {Array.from({ length: config.messages_count }, (_, index) => {
-                              // Default: 0h, 24h, 48h, 72h...
-                              const hoursValue = config.delay_hours[index] ?? (index * 24);
+                              // delay_hours now stores total minutes
+                              const totalMinutes = config.delay_hours[index] ?? (index * 24 * 60);
+                              const hours = Math.floor(totalMinutes / 60);
+                              const minutes = totalMinutes % 60;
                               return (
                                 <div key={index} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
                                   <Badge variant="outline" className="min-w-[80px] justify-center">
@@ -451,19 +453,38 @@ export default function Configuration() {
                                       type="number"
                                       min={0}
                                       max={8760}
-                                      value={hoursValue}
+                                      value={hours}
                                       onChange={(e) => {
                                         const newDelays = [...config.delay_hours];
                                         // Ensure array is long enough
                                         while (newDelays.length < config.messages_count) {
-                                          newDelays.push(newDelays.length * 24);
+                                          newDelays.push(newDelays.length * 24 * 60);
                                         }
-                                        newDelays[index] = parseInt(e.target.value) || 0;
+                                        const newHours = parseInt(e.target.value) || 0;
+                                        newDelays[index] = newHours * 60 + minutes;
                                         updateLocalConfig(category, 'delay_hours', newDelays);
                                       }}
-                                      className="w-20"
+                                      className="w-16"
                                     />
-                                    <span className="text-xs text-muted-foreground">hours</span>
+                                    <span className="text-xs text-muted-foreground">h</span>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={59}
+                                      value={minutes}
+                                      onChange={(e) => {
+                                        const newDelays = [...config.delay_hours];
+                                        // Ensure array is long enough
+                                        while (newDelays.length < config.messages_count) {
+                                          newDelays.push(newDelays.length * 24 * 60);
+                                        }
+                                        const newMinutes = Math.min(59, parseInt(e.target.value) || 0);
+                                        newDelays[index] = hours * 60 + newMinutes;
+                                        updateLocalConfig(category, 'delay_hours', newDelays);
+                                      }}
+                                      className="w-16"
+                                    />
+                                    <span className="text-xs text-muted-foreground">min</span>
                                   </div>
                                 </div>
                               );
