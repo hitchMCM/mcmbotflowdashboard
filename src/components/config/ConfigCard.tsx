@@ -17,7 +17,6 @@ import {
   X, 
   Shuffle, 
   Target,
-  ListOrdered,
   Clock,
   Hash
 } from "lucide-react";
@@ -38,7 +37,6 @@ interface ConfigCardProps {
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
   random: Shuffle,
   fixed: Target,
-  ordered: ListOrdered,
 };
 
 export function ConfigCard({

@@ -491,7 +491,6 @@ export function useMessagesSummary() {
     response: { total: 0, active: 0 },
     sequence: { total: 0, active: 0 },
     broadcast: { total: 0, active: 0 },
-    standard: { total: 0, active: 0 },
   });
   const [loading, setLoading] = useState(true);
 
@@ -510,7 +509,6 @@ export function useMessagesSummary() {
           response: { total: 0, active: 0 },
           sequence: { total: 0, active: 0 },
           broadcast: { total: 0, active: 0 },
-          standard: { total: 0, active: 0 },
         };
 
         (data || []).forEach(row => {

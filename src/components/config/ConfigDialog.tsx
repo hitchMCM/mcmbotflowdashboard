@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Shuffle, Target, ListOrdered, X, Plus } from "lucide-react";
+import { Shuffle, Target, X, Plus } from "lucide-react";
 import { 
   MessageCategory, 
   PageConfig, 
@@ -54,7 +54,6 @@ interface ConfigDialogProps {
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
   random: Shuffle,
   fixed: Target,
-  ordered: ListOrdered,
 };
 
 export function ConfigDialog({
@@ -210,10 +209,8 @@ export function ConfigDialog({
             <div className="space-y-3">
               <Label>Selection Mode</Label>
               <RadioGroup value={mode} onValueChange={(v) => setMode(v as SelectionMode)}>
-                {(['random', 'fixed', 'ordered'] as SelectionMode[]).map((m) => {
+                {(['random', 'fixed'] as SelectionMode[]).map((m) => {
                   const Icon = MODE_ICONS[m];
-                  // Hide 'ordered' for non-sequence categories
-                  if (m === 'ordered' && category !== 'sequence') return null;
                   return (
                     <div key={m} className="flex items-start space-x-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
                       <RadioGroupItem value={m} id={`mode-${m}`} className="mt-1" />
@@ -253,14 +250,12 @@ export function ConfigDialog({
               </div>
             )}
 
-            {/* Random/Ordered Message Selection */}
-            {(mode === 'random' || mode === 'ordered') && (
+            {/* Random Message Selection */}
+            {mode === 'random' && (
               <div className="space-y-2">
                 <Label>Select Messages for Pool</Label>
                 <p className="text-sm text-muted-foreground">
-                  {mode === 'random' 
-                    ? 'Select messages to include in the random selection pool.'
-                    : 'Select messages in the order they should be sent.'}
+                  Select messages to include in the random selection pool.
                 </p>
                 <div className="border rounded-lg divide-y max-h-60 overflow-auto">
                   {messages.length === 0 ? (
