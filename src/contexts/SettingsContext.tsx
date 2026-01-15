@@ -2,12 +2,15 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { Language, t as translate, isRTL } from '@/lib/translations';
 
 type Theme = 'dark' | 'light' | 'system';
+type Timezone = 'utc' | 'paris' | 'madrid' | 'casablanca' | 'dubai';
 
 interface SettingsContextType {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   language: Language;
   setLanguage: (lang: Language) => void;
+  timezone: Timezone;
+  setTimezone: (tz: Timezone) => void;
   t: (key: string) => string;
   isRTL: boolean;
 }
@@ -16,6 +19,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 const STORAGE_KEY_THEME = 'mcm-theme';
 const STORAGE_KEY_LANG = 'mcm-language';
+const STORAGE_KEY_TZ = 'mcm-timezone';
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -26,6 +30,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LANG);
     return (saved as Language) || 'en';
+  });
+
+  const [timezone, setTimezoneState] = useState<Timezone>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_TZ);
+    return (saved as Timezone) || 'utc';
   });
 
   // Apply theme to document
@@ -69,6 +78,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY_LANG, newLang);
   };
 
+  const setTimezone = (newTz: Timezone) => {
+    setTimezoneState(newTz);
+    localStorage.setItem(STORAGE_KEY_TZ, newTz);
+  };
+
   const t = (key: string) => translate(key, language);
 
   return (
@@ -77,6 +91,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setTheme,
       language,
       setLanguage,
+      timezone,
+      setTimezone,
       t,
       isRTL: isRTL(language),
     }}>

@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { motion } from "framer-motion";
-import { Users, Filter, Search, MoreHorizontal, Loader2, RefreshCw } from "lucide-react";
+import { Users, Filter, Search, MoreHorizontal, Loader2, RefreshCw, Bell, BellOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,19 +10,44 @@ import { Progress } from "@/components/ui/progress";
 import { useSubscribers } from "@/hooks/useSupabase";
 import { usePage } from "@/contexts/PageContext";
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type FilterType = "all" | "active" | "inactive" | "subscribed" | "unsubscribed";
 
 export default function Subscribers() {
   const { currentPage } = usePage();
   // Filter subscribers by current page
   const { subscribers, loading, error, refetch, getStats } = useSubscribers(currentPage?.id);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState<FilterType>("all");
   const stats = getStats();
 
   const filteredSubscribers = subscribers.filter(sub => {
     const name = sub.full_name || sub.name_complet || sub.first_name || '';
     const psid = sub.facebook_psid || sub.psid || '';
-    return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
            psid.includes(searchTerm);
+    
+    if (!matchesSearch) return false;
+    
+    const isActive = sub.is_active ?? true;
+    const isSubscribed = sub.is_subscribed ?? true;
+    
+    switch (filterType) {
+      case "active": return isActive;
+      case "inactive": return !isActive;
+      case "subscribed": return isSubscribed;
+      case "unsubscribed": return !isSubscribed;
+      default: return true;
+    }
   });
 
   const formatDate = (dateString: string) => {
@@ -45,7 +70,7 @@ export default function Subscribers() {
           <div>
             <h1 className="text-2xl font-display font-bold">Subscribers</h1>
             <p className="text-muted-foreground">
-              {stats.total} total • {stats.active} active • {stats.inactive} inactive
+              {stats.total} total • {stats.active} active • {stats.inactive} inactive • {stats.subscribed} subscribed • {stats.unsubscribed} unsubscribed
             </p>
           </div>
           <Button variant="outline" className="border-white/10" onClick={() => refetch()}>
@@ -64,9 +89,25 @@ export default function Subscribers() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <Button variant="outline" className="border-white/10">
-              <Filter className="h-4 w-4 mr-2" /> Filters
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="border-white/10">
+                  <Filter className="h-4 w-4 mr-2" /> 
+                  {filterType === "all" ? "All" : filterType.charAt(0).toUpperCase() + filterType.slice(1)}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup value={filterType} onValueChange={(v) => setFilterType(v as FilterType)}>
+                  <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="active">Active</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="inactive">Inactive</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="subscribed">Subscribed</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="unsubscribed">Unsubscribed</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </GlassCard>
 
@@ -106,8 +147,9 @@ export default function Subscribers() {
                 <tr className="border-b border-white/10">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Subscriber</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">PSID</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Subscribed</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Joined</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Last Message</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Subscribed</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
                 </tr>
@@ -120,7 +162,8 @@ export default function Subscribers() {
                   const displayAvatar = sub.avatar_url || sub.profile_pic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayPsid}`;
                   const displayDate = sub.subscribed_at || sub.created_at || '';
                   const displayLastMessage = sub.last_message_at || sub.last_interaction;
-                  const isActive = sub.is_active ?? sub.is_subscribed ?? true;
+                  const isActive = sub.is_active ?? true;
+                  const isSubscribed = sub.is_subscribed ?? true;
                   
                   return (
                   <motion.tr
@@ -147,6 +190,12 @@ export default function Subscribers() {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         {displayLastMessage ? formatDate(displayLastMessage) : 'No messages'}
                       </div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className={`flex items-center gap-2 text-sm ${isSubscribed ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {isSubscribed ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                        {isSubscribed ? 'Yes' : 'No'}
+                      </span>
                     </td>
                     <td className="py-4 px-4">
                       <span className={`flex items-center gap-2 text-sm ${isActive ? 'text-success' : 'text-muted-foreground'}`}>

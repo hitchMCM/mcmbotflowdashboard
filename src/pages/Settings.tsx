@@ -56,7 +56,7 @@ interface Page {
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
-  const { theme, setTheme, language, setLanguage, t } = useSettings();
+  const { theme, setTheme, language, setLanguage, timezone, setTimezone, t } = useSettings();
   const { pages, refreshPages } = usePage();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -330,7 +330,7 @@ export default function Settings() {
                       {/* Timezone */}
                       <div className="space-y-2">
                         <Label>{t('settings.timezone')}</Label>
-                        <Select defaultValue="utc">
+                        <Select value={timezone} onValueChange={(value) => setTimezone(value as any)}>
                           <SelectTrigger className="bg-white/5 border-white/10">
                             <SelectValue placeholder="Select timezone" />
                           </SelectTrigger>

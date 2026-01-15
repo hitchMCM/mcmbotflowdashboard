@@ -173,6 +173,15 @@ export default function Broadcasts() {
     if (messageType === "text") {
       return { recipient: { id: "{{PSID}}" }, message: { text: textMessage } };
     }
+    
+    // Process buttons: if URL is empty, change type to postback
+    const processedButtons = templateElement.buttons.map(btn => {
+      if (!btn.url || btn.url.trim() === '') {
+        return { type: "postback", title: btn.title, payload: btn.title };
+      }
+      return { type: "web_url", url: btn.url, title: btn.title };
+    });
+    
     return {
       recipient: { id: "{{PSID}}" },
       message: {
@@ -184,7 +193,7 @@ export default function Broadcasts() {
               title: templateElement.title,
               subtitle: templateElement.subtitle,
               image_url: templateElement.image_url || undefined,
-              buttons: templateElement.buttons.length > 0 ? templateElement.buttons : undefined
+              buttons: processedButtons.length > 0 ? processedButtons : undefined
             }] 
           }
         }
@@ -230,6 +239,16 @@ export default function Broadcasts() {
     if (!selectedMessage) return;
     setSaving(true);
     try {
+      // Process buttons: if URL is empty, change type to postback
+      const processedButtons = messageType === "template" 
+        ? templateElement.buttons.map(btn => {
+            if (!btn.url || btn.url.trim() === '') {
+              return { type: "postback" as const, title: btn.title, payload: btn.title, url: '' };
+            }
+            return { type: "web_url" as const, url: btn.url, title: btn.title };
+          })
+        : [];
+      
       await updateMessage(selectedMessage.id, {
         name: editName,
         is_active: isEnabled,
@@ -237,7 +256,7 @@ export default function Broadcasts() {
         title: messageType === "template" ? templateElement.title : null,
         subtitle: messageType === "template" ? templateElement.subtitle : null,
         image_url: messageType === "template" ? templateElement.image_url : null,
-        buttons: messageType === "template" ? templateElement.buttons : [],
+        buttons: processedButtons,
         messenger_payload: generateJSON()
       });
       

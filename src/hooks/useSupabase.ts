@@ -350,6 +350,8 @@ export function useSubscribers(pageId?: string | null) {
     total: subscribers.length,
     active: subscribers.filter(s => s.is_active === true).length,
     inactive: subscribers.filter(s => s.is_active === false || s.is_active === null).length,
+    subscribed: subscribers.filter(s => s.is_subscribed === true).length,
+    unsubscribed: subscribers.filter(s => s.is_subscribed === false).length,
   });
 
   return { subscribers, loading, error, refetch: fetchSubscribers, getStats };
@@ -1044,9 +1046,8 @@ export function useDashboardStats(pageId?: string | null) {
         broadcastConfigsQuery = broadcastConfigsQuery.eq('page_id', pageId);
       }
 
-      // Messages stats query - get sent_count, delivered_count, read_count from messages table
-      // This is needed because stats can be stored directly on messages (updated by backend)
-      let messagesStatsQuery = supabase.from('messages').select('sent_count, delivered_count, read_count, clicked_count');
+      // First, get the page's selected message IDs from page_configs
+      let pageMessageIdsQuery = supabase.from('page_configs').select('selected_message_ids').eq('page_id', pageId || '');
 
       // Fetch all data in parallel with individual error handling
       const results = await Promise.allSettled([
@@ -1057,7 +1058,7 @@ export function useDashboardStats(pageId?: string | null) {
         responseConfigsQuery,
         sequenceConfigsQuery,
         broadcastConfigsQuery,
-        messagesStatsQuery,
+        hasPage ? pageMessageIdsQuery : Promise.resolve({ data: [], error: null }),
       ]);
 
       // Extract data with default values for errors
@@ -1068,12 +1069,32 @@ export function useDashboardStats(pageId?: string | null) {
       const responsesRes = results[4].status === 'fulfilled' ? results[4].value : { data: [], error: null };
       const sequenceMessagesRes = results[5].status === 'fulfilled' ? results[5].value : { data: [], error: null };
       const broadcastsRes = results[6].status === 'fulfilled' ? results[6].value : { data: [], error: null };
-      const messagesStatsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [], error: null };
+      const pageConfigsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [], error: null };
 
       const subscribers = subscribersRes.data || [];
       const messageLogs = messagLogsRes.data || [];
       const clicks = buttonClicksRes.data || [];
-      const messagesStats = messagesStatsRes.data || [];
+      
+      // Get all selected message IDs for this page
+      const pageConfigs = (pageConfigsRes.data || []) as { selected_message_ids: string[] }[];
+      const allSelectedMessageIds = pageConfigs.flatMap(pc => pc.selected_message_ids || []);
+      const uniqueMessageIds = [...new Set(allSelectedMessageIds)];
+
+      // Fetch message stats only for the page's selected messages
+      let messagesStats: { sent_count: number; delivered_count: number; read_count: number; clicked_count: number }[] = [];
+      if (hasPage && uniqueMessageIds.length > 0) {
+        const { data: msgData } = await supabase
+          .from('messages')
+          .select('sent_count, delivered_count, read_count, clicked_count')
+          .in('id', uniqueMessageIds);
+        messagesStats = msgData || [];
+      } else if (!hasPage) {
+        // No page filter - get all messages stats
+        const { data: msgData } = await supabase
+          .from('messages')
+          .select('sent_count, delivered_count, read_count, clicked_count');
+        messagesStats = msgData || [];
+      }
 
       // Calculate stats from message_logs (individual log entries)
       const logsSentCount = messageLogs.length;
