@@ -9,6 +9,7 @@ interface Page {
   is_active: boolean;
   subscribers_count: number;
   access_token?: string | null;
+  user_id?: string;
 }
 
 interface PageContextType {
@@ -17,19 +18,47 @@ interface PageContextType {
   setCurrentPage: (page: Page) => void;
   loading: boolean;
   refreshPages: () => Promise<void>;
+  currentUserId: string | null;
 }
 
 const PageContext = createContext<PageContextType | undefined>(undefined);
+
+// Get current user from localStorage
+const getCurrentUserId = (): string | null => {
+  try {
+    const userStr = localStorage.getItem('mcm_user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      return user.id || null;
+    }
+  } catch (e) {
+    console.error('[PageContext] Error parsing user:', e);
+  }
+  return null;
+};
 
 export function PageProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState<Page | null>(null);
   const [pages, setPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(getCurrentUserId());
 
   console.log('[PageContext] Initializing...');
 
   const loadPages = async () => {
     console.log('[PageContext] Loading pages from Supabase...');
+    
+    const userId = getCurrentUserId();
+    setCurrentUserId(userId);
+    console.log('[PageContext] Current user ID:', userId);
+    
+    if (!userId) {
+      console.log('[PageContext] No user logged in, showing empty state');
+      setPages([]);
+      setCurrentPage(null);
+      setLoading(false);
+      return;
+    }
     
     // Timeout de 5 secondes max
     const timeoutPromise = new Promise((_, reject) => 
@@ -37,10 +66,11 @@ export function PageProvider({ children }: { children: ReactNode }) {
     );
     
     try {
-      // Charger toutes les pages avec timeout
+      // Load only pages belonging to the current user
       const fetchPromise = supabase
         .from('pages')
         .select('*')
+        .eq('user_id', userId)
         .order('name');
       
       const result = await Promise.race([fetchPromise, timeoutPromise]) as any;
@@ -51,18 +81,9 @@ export function PageProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('[PageContext] Error loading pages:', error.message);
-        // Create a default demo page if table doesn't exist or is empty
-        const demoPage: Page = {
-          id: 'demo',
-          facebook_page_id: 'demo',
-          name: 'Demo Page',
-          avatar_url: null,
-          is_active: true,
-          subscribers_count: 0
-        };
-        console.log('[PageContext] Using demo page due to error');
-        setPages([demoPage]);
-        setCurrentPage(demoPage);
+        // Show empty state on error
+        setPages([]);
+        setCurrentPage(null);
         setLoading(false);
         return;
       }
@@ -70,29 +91,22 @@ export function PageProvider({ children }: { children: ReactNode }) {
       // Map data to Page interface
       const loadedPages: Page[] = (data || []).map((row: any) => ({
         id: row.id,
-        facebook_page_id: row.facebook_page_id,
+        facebook_page_id: row.facebook_page_id || row.fb_page_id,
         name: row.name || row.page_name || 'Unnamed Page',
         avatar_url: row.avatar_url,
         is_active: row.is_active ?? true,
         subscribers_count: row.subscribers_count || 0,
-        access_token: row.access_token
+        access_token: row.access_token,
+        user_id: row.user_id
       }));
       
       console.log('[PageContext] Mapped pages:', loadedPages);
       
-      // If no pages exist, create a demo page
+      // If no pages exist for this user, show empty state (no demo page)
       if (loadedPages.length === 0) {
-        const demoPage: Page = {
-          id: 'demo',
-          facebook_page_id: 'demo',
-          name: 'Demo Page',
-          avatar_url: null,
-          is_active: true,
-          subscribers_count: 0
-        };
-        console.log('[PageContext] No pages found, using demo page');
-        setPages([demoPage]);
-        setCurrentPage(demoPage);
+        console.log('[PageContext] No pages found for user, showing empty state');
+        setPages([]);
+        setCurrentPage(null);
         setLoading(false);
         return;
       }
@@ -116,18 +130,10 @@ export function PageProvider({ children }: { children: ReactNode }) {
       setCurrentPage(loadedPages[0]);
     } catch (error) {
       console.error('Error loading pages:', error);
-      // Create a default demo page on any error (including timeout)
-      const demoPage: Page = {
-        id: 'demo',
-        facebook_page_id: 'demo',
-        name: 'Demo Page',
-        avatar_url: null,
-        is_active: true,
-        subscribers_count: 0
-      };
-      console.log('[PageContext] Exception caught (timeout or error), using demo page');
-      setPages([demoPage]);
-      setCurrentPage(demoPage);
+      // Show empty state on any error (including timeout)
+      console.log('[PageContext] Exception caught (timeout or error), showing empty state');
+      setPages([]);
+      setCurrentPage(null);
       setLoading(false);
     } finally {
       console.log('[PageContext] Loading complete');
@@ -151,7 +157,8 @@ export function PageProvider({ children }: { children: ReactNode }) {
         pages, 
         setCurrentPage: handleSetCurrentPage, 
         loading,
-        refreshPages: loadPages 
+        refreshPages: loadPages,
+        currentUserId
       }}
     >
       {loading ? (

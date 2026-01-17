@@ -29,11 +29,18 @@ export interface Message {
   day_number: number | null;
   message_order: number | null;
   default_delay_hours: number;
+  delay_hours?: number | null; // For sequences - delay in minutes
+  
+  // For responses - trigger keywords
+  keywords?: string[] | null;
   
   // Selection & Status
   weight: number;
   is_active: boolean;
   is_global: boolean;
+  
+  // User ownership
+  user_id: string | null;
   
   // Statistics
   sent_count: number;
@@ -64,6 +71,7 @@ export interface MessageInsert {
   weight?: number;
   is_active?: boolean;
   is_global?: boolean;
+  user_id?: string;
 }
 
 export interface MessageUpdate extends Partial<MessageInsert> {}

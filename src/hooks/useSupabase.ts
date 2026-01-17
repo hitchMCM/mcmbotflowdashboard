@@ -308,18 +308,26 @@ export function useSubscribers(pageId?: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchSubscribers = useCallback(async () => {
-    console.log('[useSubscribers] Fetching ALL subscribers...');
+    console.log('[useSubscribers] Fetching subscribers for pageId:', pageId);
     setLoading(true);
     try {
-      // Always fetch ALL subscribers without any filter
+      // If no pageId, return empty (user has no page selected)
+      if (!pageId || pageId === 'demo') {
+        console.log('[useSubscribers] No valid pageId, returning empty');
+        setSubscribers([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch subscribers only for the specified page
       const { data, error: queryError } = await supabase
         .from('subscribers')
         .select('*')
+        .eq('page_id', pageId)
         .order('subscribed_at', { ascending: false });
       
-      console.log('[useSubscribers] Raw response - data:', data);
-      console.log('[useSubscribers] Raw response - error:', queryError);
-      console.log('[useSubscribers] Count:', data?.length || 0);
+      console.log('[useSubscribers] Response - data:', data?.length || 0, 'records');
       
       if (queryError) {
         console.error('[useSubscribers] Query error:', queryError);
@@ -327,18 +335,11 @@ export function useSubscribers(pageId?: string | null) {
         return;
       }
       
-      // If pageId is provided, filter client-side (optional)
-      let result = data || [];
-      if (pageId && pageId !== 'demo') {
-        result = result.filter((s: any) => s.page_id === pageId);
-        console.log('[useSubscribers] Filtered by pageId:', pageId, '- Count:', result.length);
-      }
-      
-      setSubscribers(result as Subscriber[]);
+      setSubscribers(data as Subscriber[] || []);
       setError(null);
     } catch (err: any) {
       console.error('[useSubscribers] Exception:', err);
-      setError(err?.message || 'Erreur lors du chargement');
+      setError(err?.message || 'Error loading subscribers');
     } finally {
       setLoading(false);
     }
@@ -960,6 +961,8 @@ export interface DashboardStats {
   // Subscribers
   totalSubscribers: number;
   activeSubscribers: number;
+  subscribedCount: number;
+  unsubscribedCount: number;
   newSubscribersToday: number;
   // Messages
   totalMessagesSent: number;
@@ -981,6 +984,8 @@ export function useDashboardStats(pageId?: string | null) {
   const [stats, setStats] = useState<DashboardStats>({
     totalSubscribers: 0,
     activeSubscribers: 0,
+    subscribedCount: 0,
+    unsubscribedCount: 0,
     newSubscribersToday: 0,
     totalMessagesSent: 0,
     totalMessagesDelivered: 0,
@@ -1116,6 +1121,8 @@ export function useDashboardStats(pageId?: string | null) {
       // Subscriber calculations
       const totalSubscribers = subscribers.length;
       const activeSubscribers = subscribers.filter(s => s.is_active && s.is_subscribed).length;
+      const subscribedCount = subscribers.filter(s => s.is_subscribed === true).length;
+      const unsubscribedCount = subscribers.filter(s => s.is_subscribed === false).length;
       const newSubscribersToday = subscribers.filter(s => s.created_at >= todayISO).length;
 
       const deliveryRate = totalMessagesSent > 0 ? Math.round((totalMessagesDelivered / totalMessagesSent) * 100) : 0;
@@ -1125,6 +1132,8 @@ export function useDashboardStats(pageId?: string | null) {
       setStats({
         totalSubscribers,
         activeSubscribers,
+        subscribedCount,
+        unsubscribedCount,
         newSubscribersToday,
         totalMessagesSent,
         totalMessagesDelivered,

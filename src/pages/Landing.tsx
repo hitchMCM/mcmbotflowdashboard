@@ -217,9 +217,13 @@ export default function Landing() {
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-3"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/25">
-                <span className="text-white font-bold text-xl">M</span>
-              </div>
+              <motion.img 
+                src="/logo3.png" 
+                alt="MCM BotFlow" 
+                className="h-14 w-14 object-contain"
+                animate={{ filter: ["drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))", "drop-shadow(0 0 8px hsl(187 93% 43% / 0.5))", "drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))"] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
               <span className="font-display font-bold text-xl bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
                 MCM BotFlow
               </span>
@@ -246,10 +250,10 @@ export default function Landing() {
                 Sign In
               </Button>
               <Button 
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/register')}
                 className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25"
               >
-                Get Started
+                Create Account
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </motion.div>
@@ -288,7 +292,7 @@ export default function Landing() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button 
                 size="lg"
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/register')}
                 className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-lg px-8 py-6 shadow-xl shadow-primary/25"
               >
                 <MessageCircle className="mr-2 h-5 w-5" />
@@ -520,7 +524,7 @@ export default function Landing() {
                   ))}
                 </ul>
                 <Button 
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/register')}
                   className={`w-full ${
                     plan.popular 
                       ? 'bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70' 
@@ -592,7 +596,7 @@ export default function Landing() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button 
                   size="lg"
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/register')}
                   className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-lg px-10 py-6 shadow-xl shadow-primary/25"
                 >
                   Create Free Account
@@ -620,9 +624,13 @@ export default function Landing() {
             {/* Brand */}
             <div className="col-span-2">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/25">
-                  <span className="text-white font-bold text-xl">M</span>
-                </div>
+                <motion.img 
+                  src="/logo3.png" 
+                  alt="MCM BotFlow" 
+                  className="h-14 w-14 object-contain"
+                  animate={{ filter: ["drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))", "drop-shadow(0 0 8px hsl(187 93% 43% / 0.5))", "drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))"] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
                 <span className="font-display font-bold text-xl">MCM BotFlow</span>
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-xs">

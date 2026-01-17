@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { 
   GitBranch, Save, Eye, Plus, Trash2, Copy, Loader2, X, Code, 
-  Image, Type, MousePointer, ToggleLeft, FileText, Pencil, Check
+  Image, Type, MousePointer, ToggleLeft, FileText, Pencil, Check, Clock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";

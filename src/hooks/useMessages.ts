@@ -9,8 +9,22 @@ import {
   SelectionMode 
 } from '@/types/messages';
 
+// Helper to get current user ID from localStorage
+const getCurrentUserId = (): string | null => {
+  try {
+    const userStr = localStorage.getItem('mcm_user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      return user.id || null;
+    }
+  } catch (e) {
+    console.error('[useMessages] Error parsing user:', e);
+  }
+  return null;
+};
+
 // =====================================================================================
-// useMessages - Manage global message pool
+// useMessages - Manage user's message pool
 // =====================================================================================
 
 interface UseMessagesOptions {
@@ -35,6 +49,18 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
     try {
       setLoading(true);
       
+      const userId = getCurrentUserId();
+      console.log('[useMessages] Fetching messages for userId:', userId, 'category:', category);
+      
+      // User must be logged in to see messages
+      if (!userId) {
+        console.log('[useMessages] No user logged in, returning empty');
+        setMessages([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+      
       if (filterByPage && pageId) {
         // Fetch messages used by the specific page
         const { data: configs, error: configError } = await supabase
@@ -57,11 +83,12 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
           return;
         }
         
-        // Fetch the actual messages
+        // Fetch only user's own messages
         let query = supabase
           .from('messages')
           .select('*')
           .in('id', Array.from(messageIds))
+          .eq('user_id', userId)
           .order('created_at', { ascending: false });
         
         if (category) {
@@ -72,8 +99,12 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
         if (fetchError) throw fetchError;
         setMessages(data || []);
       } else {
-        // Fetch all messages (global pool)
-        let query = supabase.from('messages').select('*').order('created_at', { ascending: false });
+        // Fetch ONLY user's own messages (strict filtering)
+        let query = supabase
+          .from('messages')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
         
         if (category) {
           query = query.eq('category', category);
@@ -100,10 +131,17 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
 
   const createMessage = async (message: MessageInsert): Promise<Message | null> => {
     try {
-      console.log('[useMessages] Creating message:', message);
+      const userId = getCurrentUserId();
+      console.log('[useMessages] Creating message for user:', userId);
+      
+      // Build insert data - include user_id if available
+      const insertData = userId 
+        ? { ...message, user_id: userId }
+        : message;
+      
       const { data, error: insertError } = await supabase
         .from('messages')
-        .insert(message)
+        .insert(insertData)
         .select()
         .single();
       

@@ -28,8 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
 import { usePage } from "@/contexts/PageContext";
+import { logout, useAuth } from "@/components/auth/ProtectedRoute";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -46,13 +46,19 @@ const navigation = [
 export function Sidebar() {
   const location = useLocation();
   const { currentPage, pages, setCurrentPage, loading } = usePage();
+  const { user } = useAuth();
 
   // Debug log
   console.log('[Sidebar] currentPage:', currentPage, 'pages:', pages, 'loading:', loading);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    logout();
   };
+
+  // Get user display info
+  const userName = user?.full_name || user?.email?.split('@')[0] || 'User';
+  const userEmail = user?.email || '';
+  const userInitials = userName.slice(0, 2).toUpperCase();
 
   return (
     <motion.aside
@@ -64,13 +70,13 @@ export function Sidebar() {
       {/* Logo */}
       <div className="p-6 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <motion.div
-            className="p-2 rounded-xl bg-gradient-primary animate-pulse-glow"
-            animate={{ boxShadow: ["0 0 20px hsl(187 93% 43% / 0.3)", "0 0 40px hsl(187 93% 43% / 0.5)", "0 0 20px hsl(187 93% 43% / 0.3)"] }}
+          <motion.img 
+            src="/logo3.png" 
+            alt="MCM BotFlow" 
+            className="h-14 w-14 object-contain"
+            animate={{ filter: ["drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))", "drop-shadow(0 0 8px hsl(187 93% 43% / 0.5))", "drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))"] }}
             transition={{ duration: 2, repeat: Infinity }}
-          >
-            <Bot className="h-6 w-6 text-primary-foreground" />
-          </motion.div>
+          />
           <span className="font-display text-xl font-bold gradient-text">MCM BotFlow</span>
         </div>
       </div>
@@ -145,16 +151,16 @@ export function Sidebar() {
       <div className="p-4 border-t border-white/10">
         <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5">
           <Avatar className="h-10 w-10 ring-2 ring-primary/30">
-            <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" />
-            <AvatarFallback>AD</AvatarFallback>
+            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`} />
+            <AvatarFallback>{userInitials}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Admin User</p>
-            <p className="text-xs text-muted-foreground truncate">admin@mcmbotflow.com</p>
+            <p className="text-sm font-medium truncate">{userName}</p>
+            <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
           </div>
           <button
             onClick={handleLogout}
-            title="Déconnexion"
+            title="Logout"
             className="p-2 rounded-lg hover:bg-white/10 transition-colors text-muted-foreground hover:text-destructive"
           >
             <LogOut className="h-4 w-4" />

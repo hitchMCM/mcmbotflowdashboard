@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Eye, EyeOff, Lock, Mail, Loader2, MessageCircle } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, Loader2, MessageCircle, ArrowLeft } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -22,8 +22,8 @@ export default function Login() {
     
     if (!email || !password) {
       toast({
-        title: "❌ Erreur",
-        description: "Veuillez remplir tous les champs.",
+        title: "❌ Error",
+        description: "Please fill in all fields.",
         variant: "destructive"
       });
       return;
@@ -43,8 +43,8 @@ export default function Login() {
       
       if (error || !user) {
         toast({
-          title: "❌ Échec de connexion",
-          description: "Email ou mot de passe incorrect.",
+          title: "❌ Login Failed",
+          description: "Incorrect email or password.",
           variant: "destructive"
         });
         setLoading(false);
@@ -67,16 +67,16 @@ export default function Login() {
       }));
 
       toast({
-        title: "✅ Connexion réussie",
-        description: `Bienvenue ${user.full_name || user.email} !`,
+        title: "✅ Login Successful",
+        description: `Welcome ${user.full_name || user.email}!`,
       });
 
       navigate('/dashboard');
     } catch (err) {
       console.error('Login error:', err);
       toast({
-        title: "❌ Erreur",
-        description: "Une erreur est survenue. Réessayez.",
+        title: "❌ Error",
+        description: "An error occurred. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -101,15 +101,21 @@ export default function Login() {
           {/* Logo */}
           <div className="text-center mb-8">
             <motion.div 
-              className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-primary flex items-center justify-center"
+              className="flex justify-center mb-4"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, type: "spring" }}
             >
-              <MessageCircle className="h-8 w-8 text-white" />
+              <motion.img 
+                src="/logo3.png" 
+                alt="MCM BotFlow" 
+                className="h-28 w-28 object-contain"
+                animate={{ filter: ["drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))", "drop-shadow(0 0 8px hsl(187 93% 43% / 0.5))", "drop-shadow(0 0 4px hsl(187 93% 43% / 0.3))"] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
             </motion.div>
             <h1 className="text-2xl font-display font-bold gradient-text">MCM BotFlow</h1>
-            <p className="text-muted-foreground mt-2">Connectez-vous à votre dashboard</p>
+            <p className="text-muted-foreground mt-2">Sign in to your dashboard</p>
           </div>
 
           {/* Login Form */}
@@ -132,7 +138,7 @@ export default function Login() {
             <div className="space-y-2">
               <Label htmlFor="password" className="flex items-center gap-2">
                 <Lock className="h-4 w-4 text-primary" />
-                Mot de passe
+                Password
               </Label>
               <div className="relative">
                 <Input
@@ -167,10 +173,10 @@ export default function Login() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Connexion...
+                  Signing in...
                 </>
               ) : (
-                "Se connecter"
+                "Sign In"
               )}
             </Button>
           </form>
@@ -181,11 +187,35 @@ export default function Login() {
               <span className="font-medium text-primary">Demo:</span> admin@mcm.com / admin123
             </p>
           </div>
+
+          {/* Register link */}
+          <div className="mt-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Link 
+                to="/register" 
+                className="text-primary hover:underline font-medium"
+              >
+                Create Account
+              </Link>
+            </p>
+          </div>
+
+          {/* Back to home */}
+          <div className="mt-4 text-center">
+            <Link 
+              to="/" 
+              className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Back to Home
+            </Link>
+          </div>
         </GlassCard>
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          © 2026 MCM BotFlow. Tous droits réservés.
+          © 2026 MCM BotFlow. All rights reserved.
         </p>
       </motion.div>
     </div>

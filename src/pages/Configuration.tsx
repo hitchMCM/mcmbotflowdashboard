@@ -230,11 +230,11 @@ export default function Configuration() {
         // Welcome and Response send immediately - no delays needed
         delayHoursToSave = [0];
       } else if (category === 'sequence') {
-        // Sequence uses hours after subscription
+        // Sequence uses minutes after subscription
         delayHoursToSave = config.delay_hours.slice(0, config.messages_count);
-        // Pad with defaults if shorter
+        // Pad with defaults if shorter (in minutes: 0, 1440, 2880... = 0h, 24h, 48h...)
         while (delayHoursToSave.length < config.messages_count) {
-          delayHoursToSave.push(delayHoursToSave.length * 24);
+          delayHoursToSave.push(delayHoursToSave.length * 24 * 60);
         }
       } else if (category === 'broadcast') {
         // Broadcast uses daily send times (stored as minutes)

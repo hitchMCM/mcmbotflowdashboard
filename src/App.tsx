@@ -26,6 +26,7 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
+import Register from "./pages/Register";
 
 console.log('[App] Loading application...');
 
@@ -52,6 +53,7 @@ const App = () => (
             {/* Public routes - NO PageProvider */}
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="/about" element={<About />} />
             <Route path="/careers" element={<Careers />} />
             <Route path="/blog" element={<Blog />} />

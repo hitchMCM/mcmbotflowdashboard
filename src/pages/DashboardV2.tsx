@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { 
   Users, Send, CheckCheck, Eye, MousePointer, TrendingUp, 
   Loader2, RefreshCw, BarChart3, MessageCircle, Zap, Radio,
-  Calendar, AlertCircle
+  Calendar, AlertCircle, Settings, Plus
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -25,7 +26,8 @@ type TimeRange = "today" | "week" | "month" | "all";
 
 export default function Dashboard() {
   // Get current page from context for multi-page filtering
-  const { currentPage } = usePage();
+  const { currentPage, pages } = usePage();
+  const navigate = useNavigate();
   const pageId = currentPage?.id;
   
   // Pass pageId to all hooks for page-specific data
@@ -46,6 +48,38 @@ export default function Dashboard() {
     { name: 'Read', value: stats.readRate, fill: '#a855f7' },
     { name: 'Delivered', value: stats.deliveryRate, fill: '#22c55e' },
   ];
+
+  // Show empty state when no pages exist
+  if (pages.length === 0) {
+    return (
+      <DashboardLayout pageName="Dashboard">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center max-w-md"
+          >
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+              <Plus className="w-10 h-10 text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold mb-3">Welcome to MCM BotFlow!</h2>
+            <p className="text-muted-foreground mb-6">
+              Get started by adding your first Facebook page. You'll be able to manage subscribers, 
+              send messages, and automate your Messenger communications.
+            </p>
+            <Button 
+              onClick={() => navigate('/settings')}
+              className="bg-gradient-primary"
+              size="lg"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Add Your First Page
+            </Button>
+          </motion.div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout pageName="Dashboard">
@@ -261,18 +295,30 @@ export default function Dashboard() {
               )}
             </div>
             {/* Summary stats below chart */}
-            <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-white/10">
+            <div className="grid grid-cols-6 gap-4 mt-6 pt-6 border-t border-white/10">
               <div className="text-center">
                 {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (
                   <p className="text-2xl font-bold text-cyan-400">{stats.totalSubscribers}</p>
                 )}
-                <p className="text-xs text-muted-foreground">Total Subscribers</p>
+                <p className="text-xs text-muted-foreground">Total</p>
               </div>
               <div className="text-center">
                 {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (
                   <p className="text-2xl font-bold text-green-400">{stats.activeSubscribers}</p>
                 )}
                 <p className="text-xs text-muted-foreground">Active</p>
+              </div>
+              <div className="text-center">
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (
+                  <p className="text-2xl font-bold text-blue-400">{stats.subscribedCount}</p>
+                )}
+                <p className="text-xs text-muted-foreground">Subscribed</p>
+              </div>
+              <div className="text-center">
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (
+                  <p className="text-2xl font-bold text-red-400">{stats.unsubscribedCount}</p>
+                )}
+                <p className="text-xs text-muted-foreground">Unsubscribed</p>
               </div>
               <div className="text-center">
                 {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (

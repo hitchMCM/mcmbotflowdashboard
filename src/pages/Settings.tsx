@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil } from "lucide-react";
+import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { usePage } from "@/contexts/PageContext";
@@ -56,7 +56,7 @@ interface Page {
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
-  const { theme, setTheme, language, setLanguage, timezone, setTimezone, t } = useSettings();
+  const { theme, setTheme, language, setLanguage, timezone, setTimezone, t, saveSettingsToDatabase, isSaving } = useSettings();
   const { pages, refreshPages } = usePage();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -86,6 +86,15 @@ export default function Settings() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [pageToDelete, setPageToDelete] = useState<Page | null>(null);
   const [deletingPage, setDeletingPage] = useState(false);
+
+  const handleSaveGeneralSettings = async () => {
+    const success = await saveSettingsToDatabase();
+    if (success) {
+      toast({ title: "✅ Saved!", description: "Your settings have been saved successfully" });
+    } else {
+      toast({ title: "❌ Error", description: "Failed to save settings", variant: "destructive" });
+    }
+  };
 
   const handleAddPage = async () => {
     if (!newPageName.trim() || !newPageId.trim()) {
@@ -342,6 +351,27 @@ export default function Settings() {
                             <SelectItem value="dubai">Asia/Dubai (UTC+4)</SelectItem>
                           </SelectContent>
                         </Select>
+                      </div>
+
+                      {/* Save Button */}
+                      <div className="pt-4 border-t border-white/10">
+                        <Button
+                          onClick={handleSaveGeneralSettings}
+                          disabled={isSaving}
+                          className="bg-gradient-primary hover:opacity-90"
+                        >
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              {t('settings.save') || 'Save Settings'}
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </div>
