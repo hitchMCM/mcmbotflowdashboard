@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
   Plus, Trash2, X, Image, Type, MousePointer, 
-  MessageSquare, Layout, Film, ChevronLeft, ChevronRight, Zap, GripVertical, AlertTriangle
+  MessageSquare, Layout, Film, ChevronLeft, ChevronRight, Zap, GripVertical, AlertTriangle, Link
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,8 +68,8 @@ interface MessageEditorProps {
 }
 
 const defaultElement: TemplateElement = {
-  title: "Card Title",
-  subtitle: "Card subtitle or description",
+  title: "",
+  subtitle: "",
   image_url: "",
   buttons: []
 };
@@ -82,7 +82,7 @@ const defaultMediaElement: MediaElement = {
 
 const defaultQuickReply: QuickReply = {
   content_type: "text",
-  title: "Quick Reply",
+  title: "",
   payload: ""
 };
 
@@ -106,7 +106,7 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
         break;
       case 'button':
         newContent.elements = [{
-          title: value.elements?.[0]?.title || "Button Template",
+          title: value.elements?.[0]?.title || "",
           subtitle: value.elements?.[0]?.subtitle || "",
           buttons: value.elements?.[0]?.buttons || []
         }];
@@ -118,7 +118,7 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
         newContent.elements = value.elements?.length ? value.elements : [{ ...defaultElement }, { ...defaultElement }];
         break;
       case 'quick_replies':
-        newContent.text = value.text || "Choose an option:";
+        newContent.text = value.text || "";
         newContent.quick_replies = value.quick_replies?.length ? value.quick_replies : [{ ...defaultQuickReply }];
         break;
     }
@@ -323,9 +323,39 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             onChange={(url) => updateElement(0, { image_url: url })}
             label="Image (optionnel)"
             aspectRatio={1.91}
-            minWidth={1200}
-            minHeight={628}
+            minWidth={254}
+            minHeight={133}
           />
+          
+          {/* Default Action - Clickable Image Link */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Link className="h-4 w-4" />
+              Lien sur l'image (optionnel)
+            </Label>
+            <Input
+              placeholder="https://example.com (rend l'image cliquable)"
+              value={currentElement.default_action?.url || ""}
+              onChange={(e) => {
+                const url = e.target.value.trim();
+                if (url) {
+                  updateElement(0, { 
+                    default_action: { 
+                      type: 'web_url', 
+                      url,
+                      webview_height_ratio: 'full'
+                    } 
+                  });
+                } else {
+                  updateElement(0, { default_action: undefined });
+                }
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Si rempli, cliquer sur l'image ouvrira ce lien
+            </p>
+          </div>
+          
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Titre</Label>
@@ -423,8 +453,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               onChange={(url) => updateMediaElement({ url })}
               label="Image"
               aspectRatio={1.91}
-              minWidth={1200}
-              minHeight={628}
+              minWidth={254}
+              minHeight={133}
             />
           )}
           
@@ -557,9 +587,36 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
                   onChange={(url) => updateElement(activeCarouselIndex, { image_url: url })}
                   label="Image"
                   aspectRatio={1.91}
-                  minWidth={1200}
-                  minHeight={628}
+                  minWidth={254}
+                  minHeight={133}
                 />
+                
+                {/* Default Action - Clickable Image Link */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Link className="h-4 w-4" />
+                    Lien sur l'image
+                  </Label>
+                  <Input
+                    placeholder="https://example.com"
+                    value={currentElement.default_action?.url || ""}
+                    onChange={(e) => {
+                      const url = e.target.value.trim();
+                      if (url) {
+                        updateElement(activeCarouselIndex, { 
+                          default_action: { 
+                            type: 'web_url', 
+                            url,
+                            webview_height_ratio: 'full'
+                          } 
+                        });
+                      } else {
+                        updateElement(activeCarouselIndex, { default_action: undefined });
+                      }
+                    }}
+                  />
+                </div>
+                
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Titre</Label>

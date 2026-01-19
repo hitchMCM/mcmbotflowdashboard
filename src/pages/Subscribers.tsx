@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { motion } from "framer-motion";
-import { Users, Filter, Search, MoreHorizontal, Loader2, RefreshCw, Bell, BellOff } from "lucide-react";
+import { Users, Filter, Search, MoreHorizontal, Loader2, RefreshCw, Bell, BellOff, Database } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useSubscribers } from "@/hooks/useSupabase";
 import { usePage } from "@/contexts/PageContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,20 +24,24 @@ type FilterType = "all" | "active" | "inactive" | "subscribed" | "unsubscribed";
 
 export default function Subscribers() {
   const { currentPage } = usePage();
-  // Filter subscribers by current page
-  const { subscribers, loading, error, refetch, getStats } = useSubscribers(currentPage?.id);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType, setFilterType] = useState<FilterType>("all");
+  
+  // Debounce search term - wait 500ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Pass debounced search term to hook - searches in database
+  const { subscribers, loading, error, refetch, getStats } = useSubscribers(currentPage?.id, debouncedSearch);
   const stats = getStats();
 
+  // Filter by status (active/inactive/subscribed) - this is done locally on the returned results
   const filteredSubscribers = subscribers.filter(sub => {
-    const name = sub.full_name || sub.name_complet || sub.first_name || '';
-    const psid = sub.facebook_psid || sub.psid || '';
-    const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           psid.includes(searchTerm);
-    
-    if (!matchesSearch) return false;
-    
     const isActive = sub.is_active ?? true;
     const isSubscribed = sub.is_subscribed ?? true;
     
@@ -81,13 +85,24 @@ export default function Subscribers() {
         <GlassCard hover={false} className="p-4">
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              {loading && debouncedSearch ? (
+                <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+              ) : debouncedSearch ? (
+                <Database className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
+              ) : (
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              )}
               <Input 
-                placeholder="Search subscribers..." 
+                placeholder="Search by name or PSID (searches all subscribers)..." 
                 className="pl-10 bg-white/5 border-white/10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+              {debouncedSearch && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  Searching database...
+                </span>
+              )}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

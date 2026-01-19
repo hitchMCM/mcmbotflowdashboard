@@ -98,7 +98,13 @@ export default function Settings() {
 
   const handleAddPage = async () => {
     if (!newPageName.trim() || !newPageId.trim()) {
-      toast({ title: "❌ Error", description: "Please fill in all fields", variant: "destructive" });
+      toast({ title: "❌ Error", description: "Please fill in all required fields", variant: "destructive" });
+      return;
+    }
+
+    // Validate clone selection if clone option is selected
+    if (configOption === "clone" && pages.length > 0 && !cloneFromPageId) {
+      toast({ title: "❌ Error", description: "Please select a page to clone from", variant: "destructive" });
       return;
     }
 
@@ -140,7 +146,7 @@ export default function Settings() {
         if (configError) throw configError;
 
         if (sourceConfigs && sourceConfigs.length > 0) {
-          // Clone configs to new page
+          // Clone configs to new page (including all configuration fields)
           const newConfigs = sourceConfigs.map(config => ({
             page_id: newPage.id,
             category: config.category,
@@ -150,6 +156,8 @@ export default function Settings() {
             fixed_message_id: config.fixed_message_id,
             messages_count: config.messages_count,
             delay_hours: config.delay_hours,
+            scheduled_time: config.scheduled_time,
+            scheduled_date: config.scheduled_date,
             trigger_keywords: config.trigger_keywords,
             is_enabled: config.is_enabled
           }));
@@ -159,10 +167,20 @@ export default function Settings() {
             .insert(newConfigs);
 
           if (insertError) throw insertError;
+          
+          // Find source page name for success message
+          const sourcePage = pages.find(p => p.id === cloneFromPageId);
+          toast({ 
+            title: "✅ Success!", 
+            description: `Page "${newPageName}" created with ${newConfigs.length} configuration(s) cloned from "${sourcePage?.name || 'source page'}"` 
+          });
+        } else {
+          toast({ title: "✅ Success!", description: `Page "${newPageName}" created (no configurations to clone)` });
         }
+      } else {
+        toast({ title: "✅ Success!", description: `Page "${newPageName}" created successfully` });
       }
 
-      toast({ title: "✅ Success!", description: `Page "${newPageName}" created successfully` });
       setShowAddDialog(false);
       setNewPageName("");
       setNewPageId("");
@@ -574,7 +592,7 @@ export default function Settings() {
                 <Label>Clone from</Label>
                 <Select value={cloneFromPageId} onValueChange={setCloneFromPageId}>
                   <SelectTrigger className="bg-white/5 border-white/10">
-                    <SelectValue placeholder="Select a page" />
+                    <SelectValue placeholder="Select a page to clone" />
                   </SelectTrigger>
                   <SelectContent className="glass border-white/10">
                     {pages.map((page) => (
@@ -584,6 +602,9 @@ export default function Settings() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  This will copy all message configurations including welcome messages, responses, sequences, broadcasts, and their settings.
+                </p>
               </div>
             )}
             

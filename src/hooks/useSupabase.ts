@@ -302,7 +302,7 @@ export function useAllSequenceClicks() {
 // ============================================
 // SUBSCRIBERS HOOK
 // ============================================
-export function useSubscribers(pageId?: string | null) {
+export function useSubscribers(pageId?: string | null, searchTerm?: string) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
@@ -311,7 +311,7 @@ export function useSubscribers(pageId?: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchSubscribers = useCallback(async () => {
-    console.log('[useSubscribers] Fetching subscribers for pageId:', pageId);
+    console.log('[useSubscribers] Fetching subscribers for pageId:', pageId, 'searchTerm:', searchTerm);
     setLoading(true);
     try {
       // If no pageId, return empty (user has no page selected)
@@ -326,7 +326,20 @@ export function useSubscribers(pageId?: string | null) {
         return;
       }
 
-      // Fetch all counts in parallel for accurate stats
+      // Build the data query with optional search
+      let dataQuery = supabase
+        .from('subscribers')
+        .select('*')
+        .eq('page_id', pageId);
+
+      // If searching, search in database instead of just filtering loaded data
+      if (searchTerm && searchTerm.trim().length >= 2) {
+        const search = searchTerm.trim().toLowerCase();
+        // Search by name (full_name, name_complet, first_name) or PSID
+        dataQuery = dataQuery.or(`full_name.ilike.%${search}%,name_complet.ilike.%${search}%,first_name.ilike.%${search}%,facebook_psid.ilike.%${search}%`);
+      }
+
+      // Fetch all counts in parallel for accurate stats (without search filter)
       const [totalResult, activeResult, subscribedResult, dataResult] = await Promise.all([
         // Total count
         supabase
@@ -345,11 +358,8 @@ export function useSubscribers(pageId?: string | null) {
           .select('id', { count: 'exact', head: true })
           .eq('page_id', pageId)
           .eq('is_subscribed', true),
-        // Fetch only first 500 subscribers for display (optimized)
-        supabase
-          .from('subscribers')
-          .select('*')
-          .eq('page_id', pageId)
+        // Fetch subscribers with search filter applied
+        dataQuery
           .order('subscribed_at', { ascending: false })
           .limit(500)
       ]);
@@ -374,7 +384,7 @@ export function useSubscribers(pageId?: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [pageId]);
+  }, [pageId, searchTerm]);
 
   useEffect(() => { fetchSubscribers(); }, [fetchSubscribers]);
 

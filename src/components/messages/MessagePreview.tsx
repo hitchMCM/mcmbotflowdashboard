@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Phone, Play, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Phone, Play, AlertTriangle, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageContent, MessageButton, TemplateElement, QuickReply } from "@/types/messages";
 import { FB_LIMITS } from "./MessageEditor";
@@ -41,7 +41,7 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
         {btn.type === 'web_url' && <ExternalLink className="h-3 w-3" />}
         {btn.type === 'phone_number' && <Phone className="h-3 w-3" />}
         {titleOver && <AlertTriangle className="h-3 w-3" />}
-        {truncate(btn.title, FB_LIMITS.BUTTON_TITLE) || "Button"}
+        {truncate(btn.title, FB_LIMITS.BUTTON_TITLE)}
       </div>
     );
   };
@@ -56,9 +56,20 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
       <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
         {element.image_url && (
           <div 
-            className="h-40 bg-cover bg-center bg-gray-300 relative"
+            className={cn(
+              "h-40 bg-cover bg-center bg-gray-300 relative",
+              element.default_action?.url && "cursor-pointer"
+            )}
             style={{ backgroundImage: `url(${element.image_url})` }}
+            title={element.default_action?.url ? `Cliquable: ${element.default_action.url}` : undefined}
           >
+            {/* Clickable image indicator */}
+            {element.default_action?.url && (
+              <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
+                <Link className="h-3 w-3" />
+                Cliquable
+              </div>
+            )}
             {showNavigation && (content.elements?.length || 0) > 1 && (
               <>
                 <button
@@ -82,13 +93,15 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
           </div>
         )}
         <div className="p-4">
-          <h4 
-            className={cn("font-semibold text-lg", titleOver && "text-destructive")}
-            title={titleOver ? `Titre trop long (${element.title?.length}/${FB_LIMITS.TITLE})` : undefined}
-          >
-            {titleOver && <AlertTriangle className="h-4 w-4 inline mr-1" />}
-            {truncate(element.title, FB_LIMITS.TITLE) || "Title"}
-          </h4>
+          {element.title && (
+            <h4 
+              className={cn("font-semibold text-lg", titleOver && "text-destructive")}
+              title={titleOver ? `Titre trop long (${element.title?.length}/${FB_LIMITS.TITLE})` : undefined}
+            >
+              {titleOver && <AlertTriangle className="h-4 w-4 inline mr-1" />}
+              {truncate(element.title, FB_LIMITS.TITLE)}
+            </h4>
+          )}
           {element.subtitle && (
             <p 
               className={cn("text-sm text-muted-foreground mt-1 whitespace-pre-line", subtitleOver && "text-destructive")}
@@ -168,7 +181,7 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
               "whitespace-pre-line",
               isOverLimit(content.text, FB_LIMITS.TEXT_MESSAGE) && "text-destructive"
             )}>
-              {truncate(content.text, FB_LIMITS.TEXT_MESSAGE) || "Your message here..."}
+              {truncate(content.text, FB_LIMITS.TEXT_MESSAGE)}
             </p>
           </div>
           {content.quick_replies && content.quick_replies.length > 0 && 

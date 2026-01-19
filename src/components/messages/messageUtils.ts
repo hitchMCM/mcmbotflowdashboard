@@ -60,7 +60,7 @@ export function generateMessengerPayload(content: MessageContent): any {
           payload: {
             template_type: "generic",
             elements: [{
-              title: elem.title,
+              title: elem.title || undefined,
               subtitle: elem.subtitle || undefined,
               image_url: elem.image_url || undefined,
               default_action: elem.default_action,
@@ -79,7 +79,7 @@ export function generateMessengerPayload(content: MessageContent): any {
           type: "template",
           payload: {
             template_type: "button",
-            text: elem.title,
+            text: elem.title || undefined,
             buttons: processButtons(elem.buttons) || []
           }
         };
@@ -112,7 +112,7 @@ export function generateMessengerPayload(content: MessageContent): any {
           payload: {
             template_type: "generic",
             elements: content.elements.map(elem => ({
-              title: elem.title,
+              title: elem.title || undefined,
               subtitle: elem.subtitle || undefined,
               image_url: elem.image_url || undefined,
               default_action: elem.default_action,
@@ -125,7 +125,7 @@ export function generateMessengerPayload(content: MessageContent): any {
       break;
 
     case 'quick_replies':
-      payload.message.text = content.text || "Choose an option:";
+      payload.message.text = content.text || undefined;
       addQuickReplies();
       break;
   }
