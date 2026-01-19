@@ -26,6 +26,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { usePage } from "@/contexts/PageContext";
 import { useMessages, usePageConfigs } from "@/hooks/useMessages";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/contexts/SettingsContext";
 import { 
   MessageCategory, 
   CATEGORY_LABELS, 
@@ -69,6 +70,18 @@ export default function Configuration() {
   const [activeTab, setActiveTab] = useState<MessageCategory>("welcome");
   const [saving, setSaving] = useState(false);
   const [changedCategories, setChangedCategories] = useState<Set<MessageCategory>>(new Set());
+  const { timezone, t } = useSettings();
+  
+  // Timezone offset mapping (in hours from UTC)
+  const timezoneOffsets: Record<string, number> = {
+    'utc': 0,
+    'paris': 1,
+    'madrid': 1,
+    'casablanca': 1,
+    'dubai': 4
+  };
+  
+  const getTimezoneOffset = () => timezoneOffsets[timezone] || 0;
   
   // Store original configs for change detection
   const originalConfigsRef = useRef<string>("");
@@ -499,16 +512,29 @@ export default function Configuration() {
                           <Label className="flex items-center gap-2 text-sm font-medium">
                             <Clock className="h-4 w-4" />
                             Daily Send Times
+                            <Badge variant="outline" className="ml-2 text-xs">
+                              {timezone === 'utc' ? 'UTC' : 
+                               timezone === 'paris' ? 'Paris (UTC+1)' :
+                               timezone === 'madrid' ? 'Madrid (UTC+1)' :
+                               timezone === 'casablanca' ? 'Casablanca (UTC+1)' :
+                               timezone === 'dubai' ? 'Dubai (UTC+4)' : 'UTC'}
+                            </Badge>
                           </Label>
                           <p className="text-xs text-muted-foreground">
-                            Configure the daily send time for each message slot.
+                            Configure the daily send time for each message slot. Times are in your configured timezone.
                           </p>
                           <div className="space-y-2 max-h-48 overflow-y-auto">
                             {Array.from({ length: config.messages_count }, (_, index) => {
-                              // Store times as minutes in delay_hours array
-                              const storedMinutes = config.delay_hours[index] ?? (540 + index * 180); // Default: 9:00, 12:00, 15:00...
-                              const hours = Math.floor(storedMinutes / 60);
-                              const minutes = storedMinutes % 60;
+                              // Store times as minutes in delay_hours array (stored in UTC)
+                              const storedMinutesUTC = config.delay_hours[index] ?? (540 + index * 180); // Default: 9:00, 12:00, 15:00...
+                              // Convert from UTC to user's timezone for display
+                              const offsetMinutes = getTimezoneOffset() * 60;
+                              let displayMinutes = storedMinutesUTC + offsetMinutes;
+                              // Handle day wrap
+                              if (displayMinutes < 0) displayMinutes += 1440;
+                              if (displayMinutes >= 1440) displayMinutes -= 1440;
+                              const hours = Math.floor(displayMinutes / 60);
+                              const minutes = displayMinutes % 60;
                               const timeValue = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
                               return (
                                 <div key={index} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
@@ -523,12 +549,20 @@ export default function Configuration() {
                                     value={timeValue}
                                     onChange={(e) => {
                                       const [h, m] = e.target.value.split(':').map(Number);
+                                      // Convert from user's timezone to UTC for storage
+                                      const localMinutes = (h * 60) + (m || 0);
+                                      const offsetMinutes = getTimezoneOffset() * 60;
+                                      let utcMinutes = localMinutes - offsetMinutes;
+                                      // Handle day wrap
+                                      if (utcMinutes < 0) utcMinutes += 1440;
+                                      if (utcMinutes >= 1440) utcMinutes -= 1440;
+                                      
                                       const newDelays = [...config.delay_hours];
                                       // Ensure array is long enough
                                       while (newDelays.length < config.messages_count) {
                                         newDelays.push(540 + newDelays.length * 180);
                                       }
-                                      newDelays[index] = (h * 60) + (m || 0);
+                                      newDelays[index] = utcMinutes;
                                       updateLocalConfig(category, 'delay_hours', newDelays);
                                     }}
                                     className="w-28"

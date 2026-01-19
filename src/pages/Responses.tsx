@@ -11,7 +11,6 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useState, useEffect, useRef } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useMessages } from "@/hooks/useMessages";
@@ -36,25 +35,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { MessageEditor, MessagePreview, generateMessengerPayload, convertLegacyToMessageContent, convertMessageContentToLegacy, parseMessengerPayload } from "@/components/messages";
+import { MessageContent, FACEBOOK_MESSAGE_TYPE_LABELS } from "@/types/messages";
 
-interface MessageButton {
-  type: "web_url" | "postback";
-  url: string;
-  title: string;
-}
-
-interface TemplateElement {
-  title: string;
-  subtitle: string;
-  image_url: string;
-  buttons: MessageButton[];
-}
-
-const defaultTemplate: TemplateElement = {
-  title: "Quick Reply",
-  subtitle: "Here's the information you requested.",
-  image_url: "",
-  buttons: []
+const defaultMessageContent: MessageContent = {
+  message_type: 'generic',
+  elements: [{
+    title: "Quick Reply",
+    subtitle: "Here's the information you requested.",
+    image_url: "",
+    buttons: []
+  }]
 };
 
 export default function Responses() {
@@ -75,12 +66,10 @@ export default function Responses() {
   // Store original data to compare for changes
   const originalDataRef = useRef<string>("");
   
-  // Local editing state
+  // Local editing state - using new MessageContent type
   const [editName, setEditName] = useState("");
   const [isEnabled, setIsEnabled] = useState(true);
-  const [messageType, setMessageType] = useState<"text" | "template">("template");
-  const [textMessage, setTextMessage] = useState("");
-  const [templateElement, setTemplateElement] = useState<TemplateElement>(defaultTemplate);
+  const [messageContent, setMessageContent] = useState<MessageContent>(defaultMessageContent);
   const [keywords, setKeywords] = useState<string[]>([]);
 
   const selectedMessage = messages.find(m => m.id === selectedId) || null;
@@ -99,31 +88,23 @@ export default function Responses() {
       setIsEnabled(selectedMessage.is_active);
       setKeywords(selectedMessage.keywords || []);
       
-      if (selectedMessage.text_content) {
-        setMessageType("text");
-        setTextMessage(selectedMessage.text_content);
-        setTemplateElement(defaultTemplate);
-      } else {
-        setMessageType("template");
-        setTextMessage("");
-        setTemplateElement({
-          title: selectedMessage.title || "",
-          subtitle: selectedMessage.subtitle || "",
-          image_url: selectedMessage.image_url || "",
-          buttons: (selectedMessage.buttons as MessageButton[]) || []
-        });
-      }
+      // Convert legacy format to new MessageContent
+      const content = convertLegacyToMessageContent({
+        text_content: selectedMessage.text_content,
+        title: selectedMessage.title,
+        subtitle: selectedMessage.subtitle,
+        image_url: selectedMessage.image_url,
+        buttons: selectedMessage.buttons as any[],
+        messenger_payload: selectedMessage.messenger_payload
+      });
+      setMessageContent(content);
       
       // Store original data for change detection
       originalDataRef.current = JSON.stringify({
         name: selectedMessage.name,
         is_active: selectedMessage.is_active,
         keywords: selectedMessage.keywords || [],
-        text_content: selectedMessage.text_content || "",
-        title: selectedMessage.title || "",
-        subtitle: selectedMessage.subtitle || "",
-        image_url: selectedMessage.image_url || "",
-        buttons: selectedMessage.buttons || []
+        content: content
       });
       setHasChanges(false);
     }
@@ -137,37 +118,11 @@ export default function Responses() {
       name: editName,
       is_active: isEnabled,
       keywords: keywords,
-      text_content: messageType === "text" ? textMessage : "",
-      title: messageType === "template" ? templateElement.title : "",
-      subtitle: messageType === "template" ? templateElement.subtitle : "",
-      image_url: messageType === "template" ? templateElement.image_url : "",
-      buttons: messageType === "template" ? templateElement.buttons : []
+      content: messageContent
     });
     
     setHasChanges(currentData !== originalDataRef.current);
-  }, [editName, isEnabled, keywords, messageType, textMessage, templateElement, selectedMessage]);
-
-  const updateButton = (index: number, field: keyof MessageButton, value: string) => {
-    const newButtons = [...templateElement.buttons];
-    newButtons[index] = { ...newButtons[index], [field]: value };
-    setTemplateElement({ ...templateElement, buttons: newButtons });
-  };
-
-  const addButton = () => {
-    if (templateElement.buttons.length < 3) {
-      setTemplateElement({
-        ...templateElement,
-        buttons: [...templateElement.buttons, { type: "web_url", url: "", title: "New Button" }]
-      });
-    }
-  };
-
-  const removeButton = (index: number) => {
-    setTemplateElement({
-      ...templateElement,
-      buttons: templateElement.buttons.filter((_, i) => i !== index)
-    });
-  };
+  }, [editName, isEnabled, keywords, messageContent, selectedMessage]);
 
   const addKeyword = () => {
     const kw = newKeyword.trim().toLowerCase();
@@ -182,33 +137,7 @@ export default function Responses() {
   };
 
   const generateJSON = () => {
-    if (messageType === "text") {
-      return { recipient: { id: "{{PSID}}" }, message: { text: textMessage } };
-    }
-    // Process buttons: if URL is empty, change type to postback
-    const processedButtons = templateElement.buttons.map(btn => {
-      if (!btn.url || btn.url.trim() === '') {
-        return { type: "postback", title: btn.title, payload: btn.title };
-      }
-      return { type: "web_url", url: btn.url, title: btn.title };
-    });
-    return {
-      recipient: { id: "{{PSID}}" },
-      message: {
-        attachment: {
-          type: "template",
-          payload: { 
-            template_type: "generic", 
-            elements: [{
-              title: templateElement.title,
-              subtitle: templateElement.subtitle,
-              image_url: templateElement.image_url || undefined,
-              buttons: processedButtons.length > 0 ? processedButtons : undefined
-            }] 
-          }
-        }
-      }
-    };
+    return generateMessengerPayload(messageContent);
   };
 
   const copyJSON = () => {
@@ -225,19 +154,8 @@ export default function Responses() {
   const applyJsonChanges = () => {
     try {
       const parsed = JSON.parse(jsonContent);
-      if (parsed.message?.text) {
-        setMessageType("text");
-        setTextMessage(parsed.message.text);
-      } else if (parsed.message?.attachment?.payload?.elements?.[0]) {
-        const elem = parsed.message.attachment.payload.elements[0];
-        setMessageType("template");
-        setTemplateElement({
-          title: elem.title || "",
-          subtitle: elem.subtitle || "",
-          image_url: elem.image_url || "",
-          buttons: elem.buttons || []
-        });
-      }
+      const newContent = parseMessengerPayload(parsed);
+      setMessageContent(newContent);
       setShowJsonDialog(false);
       toast({ title: "✅ Applied!", description: "JSON changes applied" });
     } catch (e) {
@@ -249,23 +167,13 @@ export default function Responses() {
     if (!selectedMessage) return;
     setSaving(true);
     try {
-      // Process buttons: if URL is empty, change type to postback
-      const processedButtons = messageType === "template" ? templateElement.buttons.map(btn => {
-        if (!btn.url || btn.url.trim() === '') {
-          return { type: "postback" as const, title: btn.title, payload: btn.title, url: '' };
-        }
-        return { type: "web_url" as const, url: btn.url, title: btn.title };
-      }) : [];
+      // Convert MessageContent to legacy format for database
+      const legacyData = convertMessageContentToLegacy(messageContent);
       
       await updateMessage(selectedMessage.id, {
         name: editName,
         is_active: isEnabled,
-        text_content: messageType === "text" ? textMessage : null,
-        title: messageType === "template" ? templateElement.title : null,
-        subtitle: messageType === "template" ? templateElement.subtitle : null,
-        image_url: messageType === "template" ? templateElement.image_url : null,
-        buttons: processedButtons,
-        messenger_payload: generateJSON()
+        ...legacyData
       });
       
       // Update original data reference after successful save
@@ -273,11 +181,7 @@ export default function Responses() {
         name: editName,
         is_active: isEnabled,
         keywords: keywords,
-        text_content: messageType === "text" ? textMessage : null,
-        title: messageType === "template" ? templateElement.title : null,
-        subtitle: messageType === "template" ? templateElement.subtitle : null,
-        image_url: messageType === "template" ? templateElement.image_url : null,
-        buttons: messageType === "template" ? templateElement.buttons : []
+        content: messageContent
       });
       setHasChanges(false);
       
@@ -292,11 +196,12 @@ export default function Responses() {
 
   const handleAddNew = async () => {
     try {
+      const defaultContent = defaultMessageContent.elements?.[0];
       const created = await createMessage({
         name: `Standard Reply ${messages.length + 1}`,
         category: 'response',
-        title: defaultTemplate.title,
-        subtitle: defaultTemplate.subtitle,
+        title: defaultContent?.title || "Quick Reply",
+        subtitle: defaultContent?.subtitle || "",
         is_active: true
       });
       if (created) {
@@ -513,6 +418,7 @@ export default function Responses() {
                               #{kw}
                               <button
                                 onClick={() => removeKeyword(kw)}
+                                title={`Remove keyword ${kw}`}
                                 className="ml-1 hover:bg-destructive/20 rounded p-0.5"
                               >
                                 <X className="h-3 w-3" />
@@ -528,101 +434,12 @@ export default function Responses() {
 
                     <Separator />
 
-                    {/* Message Type Tabs */}
-                    <Tabs value={messageType} onValueChange={(v) => setMessageType(v as "text" | "template")}>
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="template" className="gap-2">
-                          <Image className="h-4 w-4" />
-                          Template (Rich)
-                        </TabsTrigger>
-                        <TabsTrigger value="text" className="gap-2">
-                          <Type className="h-4 w-4" />
-                          Simple Text
-                        </TabsTrigger>
-                      </TabsList>
-                      
-                      <TabsContent value="text" className="mt-4 space-y-4">
-                        <div className="space-y-2">
-                          <Label>Reply Text</Label>
-                          <Textarea
-                            placeholder="Enter your reply text..."
-                            value={textMessage}
-                            onChange={(e) => setTextMessage(e.target.value)}
-                            className="min-h-32"
-                          />
-                        </div>
-                      </TabsContent>
-                      
-                      <TabsContent value="template" className="mt-4 space-y-4">
-                        <div className="grid sm:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label className="flex items-center gap-1">
-                              <Image className="h-3 w-3" />
-                              Image URL (optional)
-                            </Label>
-                            <Input
-                              placeholder="https://example.com/image.jpg"
-                              value={templateElement.image_url}
-                              onChange={(e) => setTemplateElement({ ...templateElement, image_url: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Title</Label>
-                            <Input
-                              placeholder="Quick Reply"
-                              value={templateElement.title}
-                              onChange={(e) => setTemplateElement({ ...templateElement, title: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label>Subtitle / Description</Label>
-                          <Textarea
-                            placeholder="Here's the information you requested..."
-                            value={templateElement.subtitle}
-                            onChange={(e) => setTemplateElement({ ...templateElement, subtitle: e.target.value })}
-                            className="min-h-20"
-                          />
-                        </div>
-                        
-                        {/* Buttons Section */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label className="flex items-center gap-1">
-                              <MousePointer className="h-3 w-3" />
-                              Buttons ({templateElement.buttons.length}/3)
-                            </Label>
-                            {templateElement.buttons.length < 3 && (
-                              <Button variant="outline" size="sm" onClick={addButton}>
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add Button
-                              </Button>
-                            )}
-                          </div>
-                          
-                          {templateElement.buttons.map((btn, idx) => (
-                            <div key={idx} className="flex gap-2 items-start p-3 bg-muted/50 rounded-lg border">
-                              <div className="flex-1 grid sm:grid-cols-2 gap-2">
-                                <Input
-                                  placeholder="Button text"
-                                  value={btn.title}
-                                  onChange={(e) => updateButton(idx, "title", e.target.value)}
-                                />
-                                <Input
-                                  placeholder="https://..."
-                                  value={btn.url}
-                                  onChange={(e) => updateButton(idx, "url", e.target.value)}
-                                />
-                              </div>
-                              <Button variant="ghost" size="icon" onClick={() => removeButton(idx)} className="shrink-0">
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </TabsContent>
-                    </Tabs>
+                    {/* Message Editor Component */}
+                    <MessageEditor 
+                      value={messageContent}
+                      onChange={setMessageContent}
+                      showQuickReplies={true}
+                    />
 
                     {/* Save Button */}
                     <Button 
@@ -662,43 +479,13 @@ export default function Responses() {
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Eye className="h-4 w-4" />
                       Preview
+                      <Badge variant="outline" className="ml-2">
+                        {FACEBOOK_MESSAGE_TYPE_LABELS[messageContent.message_type]}
+                      </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="max-w-sm mx-auto">
-                      <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
-                        {messageType === 'template' && templateElement.image_url && (
-                          <div 
-                            className="h-40 bg-cover bg-center bg-gray-300"
-                            style={{ backgroundImage: `url(${templateElement.image_url})` }}
-                          />
-                        )}
-                        <div className="p-4">
-                          {messageType === 'text' ? (
-                            <p className="whitespace-pre-line">{textMessage || "Your reply text here..."}</p>
-                          ) : (
-                            <>
-                              <h4 className="font-semibold text-lg">{templateElement.title || "Title"}</h4>
-                              <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
-                                {templateElement.subtitle || "Subtitle / description text"}
-                              </p>
-                            </>
-                          )}
-                        </div>
-                        {messageType === 'template' && templateElement.buttons.length > 0 && (
-                          <div className="border-t">
-                            {templateElement.buttons.map((btn, i) => (
-                              <div 
-                                key={i} 
-                                className="py-3 px-4 text-center text-sm font-medium text-primary border-b last:border-b-0 hover:bg-primary/5 cursor-pointer"
-                              >
-                                {btn.title || "Button"}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <MessagePreview content={messageContent} />
                   </CardContent>
                 </Card>
               </>

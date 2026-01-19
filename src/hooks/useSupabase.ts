@@ -304,6 +304,9 @@ export function useAllSequenceClicks() {
 // ============================================
 export function useSubscribers(pageId?: string | null) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [subscribedCount, setSubscribedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -315,27 +318,55 @@ export function useSubscribers(pageId?: string | null) {
       if (!pageId || pageId === 'demo') {
         console.log('[useSubscribers] No valid pageId, returning empty');
         setSubscribers([]);
+        setTotalCount(0);
+        setActiveCount(0);
+        setSubscribedCount(0);
         setError(null);
         setLoading(false);
         return;
       }
 
-      // Fetch subscribers only for the specified page
-      const { data, error: queryError } = await supabase
-        .from('subscribers')
-        .select('*')
-        .eq('page_id', pageId)
-        .order('subscribed_at', { ascending: false });
+      // Fetch all counts in parallel for accurate stats
+      const [totalResult, activeResult, subscribedResult, dataResult] = await Promise.all([
+        // Total count
+        supabase
+          .from('subscribers')
+          .select('id', { count: 'exact', head: true })
+          .eq('page_id', pageId),
+        // Active count
+        supabase
+          .from('subscribers')
+          .select('id', { count: 'exact', head: true })
+          .eq('page_id', pageId)
+          .eq('is_active', true),
+        // Subscribed count
+        supabase
+          .from('subscribers')
+          .select('id', { count: 'exact', head: true })
+          .eq('page_id', pageId)
+          .eq('is_subscribed', true),
+        // Fetch only first 500 subscribers for display (optimized)
+        supabase
+          .from('subscribers')
+          .select('*')
+          .eq('page_id', pageId)
+          .order('subscribed_at', { ascending: false })
+          .limit(500)
+      ]);
+
+      setTotalCount(totalResult.count || 0);
+      setActiveCount(activeResult.count || 0);
+      setSubscribedCount(subscribedResult.count || 0);
       
-      console.log('[useSubscribers] Response - data:', data?.length || 0, 'records');
+      console.log('[useSubscribers] Response - data:', dataResult.data?.length || 0, 'records, total:', totalResult.count, 'active:', activeResult.count, 'subscribed:', subscribedResult.count);
       
-      if (queryError) {
-        console.error('[useSubscribers] Query error:', queryError);
-        setError(queryError.message);
+      if (dataResult.error) {
+        console.error('[useSubscribers] Query error:', dataResult.error);
+        setError(dataResult.error.message);
         return;
       }
       
-      setSubscribers(data as Subscriber[] || []);
+      setSubscribers(dataResult.data as Subscriber[] || []);
       setError(null);
     } catch (err: any) {
       console.error('[useSubscribers] Exception:', err);
@@ -348,14 +379,15 @@ export function useSubscribers(pageId?: string | null) {
   useEffect(() => { fetchSubscribers(); }, [fetchSubscribers]);
 
   const getStats = () => ({
-    total: subscribers.length,
-    active: subscribers.filter(s => s.is_active === true).length,
-    inactive: subscribers.filter(s => s.is_active === false || s.is_active === null).length,
-    subscribed: subscribers.filter(s => s.is_subscribed === true).length,
-    unsubscribed: subscribers.filter(s => s.is_subscribed === false).length,
+    total: totalCount,
+    active: activeCount,
+    inactive: totalCount - activeCount,
+    subscribed: subscribedCount,
+    unsubscribed: totalCount - subscribedCount,
+    loaded: subscribers.length,
   });
 
-  return { subscribers, loading, error, refetch: fetchSubscribers, getStats };
+  return { subscribers, loading, error, refetch: fetchSubscribers, getStats, totalCount };
 }
 
 // ============================================
@@ -1013,10 +1045,19 @@ export function useDashboardStats(pageId?: string | null) {
       // Build queries based on whether we have a pageId
       const hasPage = pageId && pageId !== 'demo';
 
-      // Subscribers query - filter by page_id if available
-      let subscribersQuery = supabase.from('subscribers').select('id, is_active, is_subscribed, created_at, page_id');
+      // Subscribers - use COUNT queries for totals (much faster than loading all rows)
+      let totalSubscribersQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true });
+      let activeSubscribersQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('is_subscribed', true);
+      let subscribedQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true }).eq('is_subscribed', true);
+      let unsubscribedQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true }).eq('is_subscribed', false);
+      let newTodayQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true }).gte('created_at', todayISO);
+      
       if (hasPage) {
-        subscribersQuery = subscribersQuery.eq('page_id', pageId);
+        totalSubscribersQuery = totalSubscribersQuery.eq('page_id', pageId);
+        activeSubscribersQuery = activeSubscribersQuery.eq('page_id', pageId);
+        subscribedQuery = subscribedQuery.eq('page_id', pageId);
+        unsubscribedQuery = unsubscribedQuery.eq('page_id', pageId);
+        newTodayQuery = newTodayQuery.eq('page_id', pageId);
       }
 
       // Message logs query - filter by page_id if available
@@ -1056,27 +1097,34 @@ export function useDashboardStats(pageId?: string | null) {
 
       // Fetch all data in parallel with individual error handling
       const results = await Promise.allSettled([
-        subscribersQuery,
-        messageLogsQuery,
-        buttonClicksQuery,
-        welcomeConfigQuery.limit(1).maybeSingle(),
-        responseConfigsQuery,
-        sequenceConfigsQuery,
-        broadcastConfigsQuery,
-        hasPage ? pageMessageIdsQuery : Promise.resolve({ data: [], error: null }),
+        totalSubscribersQuery,      // 0: total count
+        activeSubscribersQuery,     // 1: active count
+        subscribedQuery,            // 2: subscribed count
+        unsubscribedQuery,          // 3: unsubscribed count
+        newTodayQuery,              // 4: new today count
+        messageLogsQuery,           // 5: message logs
+        buttonClicksQuery,          // 6: button clicks
+        welcomeConfigQuery.limit(1).maybeSingle(), // 7: welcome config
+        responseConfigsQuery,       // 8: responses
+        sequenceConfigsQuery,       // 9: sequences
+        broadcastConfigsQuery,      // 10: broadcasts
+        hasPage ? pageMessageIdsQuery : Promise.resolve({ data: [], error: null }), // 11: page message ids
       ]);
 
-      // Extract data with default values for errors
-      const subscribersRes = results[0].status === 'fulfilled' ? results[0].value : { data: [], error: null };
-      const messagLogsRes = results[1].status === 'fulfilled' ? results[1].value : { data: [], error: null };
-      const buttonClicksRes = results[2].status === 'fulfilled' ? results[2].value : { data: [], error: null };
-      const welcomeRes = results[3].status === 'fulfilled' ? results[3].value : { data: null, error: null };
-      const responsesRes = results[4].status === 'fulfilled' ? results[4].value : { data: [], error: null };
-      const sequenceMessagesRes = results[5].status === 'fulfilled' ? results[5].value : { data: [], error: null };
-      const broadcastsRes = results[6].status === 'fulfilled' ? results[6].value : { data: [], error: null };
-      const pageConfigsRes = results[7].status === 'fulfilled' ? results[7].value : { data: [], error: null };
+      // Extract counts with default values for errors
+      const totalSubscribersCount = results[0].status === 'fulfilled' ? (results[0].value as any).count || 0 : 0;
+      const activeSubscribersCount = results[1].status === 'fulfilled' ? (results[1].value as any).count || 0 : 0;
+      const subscribedCountVal = results[2].status === 'fulfilled' ? (results[2].value as any).count || 0 : 0;
+      const unsubscribedCountVal = results[3].status === 'fulfilled' ? (results[3].value as any).count || 0 : 0;
+      const newSubscribersTodayCount = results[4].status === 'fulfilled' ? (results[4].value as any).count || 0 : 0;
+      const messagLogsRes = results[5].status === 'fulfilled' ? results[5].value : { data: [], error: null };
+      const buttonClicksRes = results[6].status === 'fulfilled' ? results[6].value : { data: [], error: null };
+      const welcomeRes = results[7].status === 'fulfilled' ? results[7].value : { data: null, error: null };
+      const responsesRes = results[8].status === 'fulfilled' ? results[8].value : { data: [], error: null };
+      const sequenceMessagesRes = results[9].status === 'fulfilled' ? results[9].value : { data: [], error: null };
+      const broadcastsRes = results[10].status === 'fulfilled' ? results[10].value : { data: [], error: null };
+      const pageConfigsRes = results[11].status === 'fulfilled' ? results[11].value : { data: [], error: null };
 
-      const subscribers = subscribersRes.data || [];
       const messageLogs = messagLogsRes.data || [];
       const clicks = buttonClicksRes.data || [];
       
@@ -1118,12 +1166,12 @@ export function useDashboardStats(pageId?: string | null) {
       const totalMessagesRead = Math.max(logsReadCount, msgReadCount);
       const totalButtonClicks = Math.max(clicks.length, msgClickedCount);
 
-      // Subscriber calculations
-      const totalSubscribers = subscribers.length;
-      const activeSubscribers = subscribers.filter(s => s.is_active && s.is_subscribed).length;
-      const subscribedCount = subscribers.filter(s => s.is_subscribed === true).length;
-      const unsubscribedCount = subscribers.filter(s => s.is_subscribed === false).length;
-      const newSubscribersToday = subscribers.filter(s => s.created_at >= todayISO).length;
+      // Subscriber calculations - use counts from queries (optimized)
+      const totalSubscribers = totalSubscribersCount;
+      const activeSubscribers = activeSubscribersCount;
+      const subscribedCount = subscribedCountVal;
+      const unsubscribedCount = unsubscribedCountVal;
+      const newSubscribersToday = newSubscribersTodayCount;
 
       const deliveryRate = totalMessagesSent > 0 ? Math.round((totalMessagesDelivered / totalMessagesSent) * 100) : 0;
       const readRate = totalMessagesDelivered > 0 ? Math.round((totalMessagesRead / totalMessagesDelivered) * 100) : 0;

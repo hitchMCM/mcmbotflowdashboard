@@ -9,6 +9,94 @@ export type SelectionMode = 'random' | 'fixed';
 export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 
 // =====================================================================================
+// FACEBOOK MESSAGE TYPES
+// =====================================================================================
+
+// 6 Facebook message types supported
+export type FacebookMessageType = 
+  | 'text'           // Simple text message
+  | 'generic'        // Generic template (card with image, title, subtitle, buttons)
+  | 'button'         // Button template (text + buttons, no image)
+  | 'media'          // Media template (image/video with optional button)
+  | 'carousel'       // Multiple generic cards (up to 10)
+  | 'quick_replies'; // Message with quick reply buttons
+
+// Button types for Facebook
+export interface MessageButton {
+  type: 'web_url' | 'postback' | 'phone_number' | 'account_link';
+  title: string;
+  url?: string;
+  payload?: string;
+  webview_height_ratio?: 'compact' | 'tall' | 'full';
+}
+
+// Quick reply button
+export interface QuickReply {
+  content_type: 'text' | 'user_phone_number' | 'user_email';
+  title?: string;
+  payload?: string;
+  image_url?: string;
+}
+
+// Generic template element (used in generic and carousel)
+export interface TemplateElement {
+  title: string;
+  subtitle?: string;
+  image_url?: string;
+  default_action?: {
+    type: 'web_url';
+    url: string;
+    webview_height_ratio?: 'compact' | 'tall' | 'full';
+  };
+  buttons?: MessageButton[];
+}
+
+// Media template element
+export interface MediaElement {
+  media_type: 'image' | 'video';
+  url?: string;
+  attachment_id?: string;
+  buttons?: MessageButton[];
+}
+
+// Complete message content structure
+export interface MessageContent {
+  message_type: FacebookMessageType;
+  
+  // For text messages
+  text?: string;
+  
+  // For generic/button templates
+  elements?: TemplateElement[];
+  
+  // For media template
+  media_element?: MediaElement;
+  
+  // For quick replies (can be added to any message type)
+  quick_replies?: QuickReply[];
+}
+
+// Facebook Message Type Labels
+export const FACEBOOK_MESSAGE_TYPE_LABELS: Record<FacebookMessageType, string> = {
+  text: 'Texte Simple',
+  generic: 'Carte (Generic)',
+  button: 'Boutons (Button)',
+  media: 'Média (Image/Vidéo)',
+  carousel: 'Carrousel',
+  quick_replies: 'Quick Replies',
+};
+
+// Facebook Message Type Descriptions
+export const FACEBOOK_MESSAGE_TYPE_DESCRIPTIONS: Record<FacebookMessageType, string> = {
+  text: 'Message texte simple sans mise en forme',
+  generic: 'Carte avec image, titre, sous-titre et boutons',
+  button: 'Texte avec boutons (sans image)',
+  media: 'Image ou vidéo avec un bouton optionnel',
+  carousel: 'Plusieurs cartes défilables horizontalement (max 10)',
+  quick_replies: 'Boutons de réponse rapide qui disparaissent après clic',
+};
+
+// =====================================================================================
 // MESSAGES (Global Pool)
 // =====================================================================================
 

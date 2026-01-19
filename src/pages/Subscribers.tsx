@@ -70,7 +70,7 @@ export default function Subscribers() {
           <div>
             <h1 className="text-2xl font-display font-bold">Subscribers</h1>
             <p className="text-muted-foreground">
-              {stats.total} total • {stats.active} active • {stats.inactive} inactive • {stats.subscribed} subscribed • {stats.unsubscribed} unsubscribed
+              {stats.total} total • {stats.active} active • {stats.subscribed} subscribed
             </p>
           </div>
           <Button variant="outline" className="border-white/10" onClick={() => refetch()}>
