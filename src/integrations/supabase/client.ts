@@ -1,10 +1,8 @@
 // PostgREST Client - Migration from Supabase to Self-Hosted PostgreSQL
-// Uses Vite proxy in development to avoid CORS issues
+// Uses proxy in both development (Vite) and production (Netlify) to avoid CORS issues
 
-// In development, use /api proxy. In production, use direct URL
-const POSTGREST_URL = import.meta.env.DEV 
-  ? '/api' 
-  : (import.meta.env.VITE_POSTGREST_URL || 'http://109.176.199.57:3002');
+// Always use /api proxy - works in dev (Vite proxy) and prod (Netlify redirects)
+const POSTGREST_URL = '/api';
 
 interface QueryResult<T = any> {
   data: T[] | null;

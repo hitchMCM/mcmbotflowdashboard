@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Proxy API requests to PostgREST server (avoids CORS and mixed content issues)
+[[redirects]]
+  from = "/api/*"
+  to = "http://109.176.199.57:3002/:splat"
+  status = 200
+  force = true
+
 # Redirect all routes to index.html for SPA (React Router)
 [[redirects]]
   from = "/*"
