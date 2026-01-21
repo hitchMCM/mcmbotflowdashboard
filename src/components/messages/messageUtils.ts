@@ -55,17 +55,25 @@ export function generateMessengerPayload(content: MessageContent): any {
     case 'generic':
       if (content.elements && content.elements.length > 0) {
         const elem = content.elements[0];
+        const element: any = {
+          title: elem.title || undefined,
+          subtitle: elem.subtitle || undefined,
+          image_url: elem.image_url || undefined,
+          buttons: processButtons(elem.buttons)
+        };
+        // Only add default_action if it has a valid URL
+        if (elem.default_action?.url) {
+          element.default_action = {
+            type: "web_url",
+            url: elem.default_action.url,
+            webview_height_ratio: elem.default_action.webview_height_ratio || "full"
+          };
+        }
         payload.message.attachment = {
           type: "template",
           payload: {
             template_type: "generic",
-            elements: [{
-              title: elem.title || undefined,
-              subtitle: elem.subtitle || undefined,
-              image_url: elem.image_url || undefined,
-              default_action: elem.default_action,
-              buttons: processButtons(elem.buttons)
-            }]
+            elements: [element]
           }
         };
       }
@@ -111,13 +119,23 @@ export function generateMessengerPayload(content: MessageContent): any {
           type: "template",
           payload: {
             template_type: "generic",
-            elements: content.elements.map(elem => ({
-              title: elem.title || undefined,
-              subtitle: elem.subtitle || undefined,
-              image_url: elem.image_url || undefined,
-              default_action: elem.default_action,
-              buttons: processButtons(elem.buttons)
-            }))
+            elements: content.elements.map(elem => {
+              const element: any = {
+                title: elem.title || undefined,
+                subtitle: elem.subtitle || undefined,
+                image_url: elem.image_url || undefined,
+                buttons: processButtons(elem.buttons)
+              };
+              // Only add default_action if it has a valid URL
+              if (elem.default_action?.url) {
+                element.default_action = {
+                  type: "web_url",
+                  url: elem.default_action.url,
+                  webview_height_ratio: elem.default_action.webview_height_ratio || "full"
+                };
+              }
+              return element;
+            })
           }
         };
       }

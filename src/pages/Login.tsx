@@ -32,16 +32,31 @@ export default function Login() {
     setLoading(true);
     
     try {
-      // Check user in database
+      console.log('Attempting login with:', email.toLowerCase().trim());
+      
+      // Check user in database - only select needed fields for faster query
       const { data: user, error } = await supabase
         .from('users')
-        .select('*')
-        .eq('email', email)
+        .select('id, email, full_name, role, avatar_url')
+        .eq('email', email.toLowerCase().trim())
         .eq('password_hash', password)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       
-      if (error || !user) {
+      console.log('Login result:', { user, error });
+      
+      if (error) {
+        console.error('Supabase error:', error);
+        toast({
+          title: "❌ Login Failed",
+          description: error.message || "Database error occurred.",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+      
+      if (!user) {
         toast({
           title: "❌ Login Failed",
           description: "Incorrect email or password.",
@@ -51,27 +66,31 @@ export default function Login() {
         return;
       }
 
-      // Update last login
-      await supabase
-        .from('users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', user.id);
-
-      // Store user in localStorage
-      localStorage.setItem('mcm_user', JSON.stringify({
+      // Store user in localStorage immediately (don't wait for last_login update)
+      const userData = {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
         role: user.role,
         avatar_url: user.avatar_url
-      }));
+      };
+      localStorage.setItem('mcm_user', JSON.stringify(userData));
 
       toast({
         title: "✅ Login Successful",
         description: `Welcome ${user.full_name || user.email}!`,
       });
 
+      // Navigate immediately - don't wait for last_login update
       navigate('/dashboard');
+
+      // Update last login in background (non-blocking)
+      supabase
+        .from('users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('id', user.id)
+        .then(() => {});
+
     } catch (err) {
       console.error('Login error:', err);
       toast({
@@ -79,7 +98,6 @@ export default function Login() {
         description: "An error occurred. Please try again.",
         variant: "destructive"
       });
-    } finally {
       setLoading(false);
     }
   };

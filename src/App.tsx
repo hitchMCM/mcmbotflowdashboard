@@ -10,7 +10,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Dashboard from "./pages/DashboardV2";
-import Subscribers from "./pages/Subscribers";
 import Flows from "./pages/Flows";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
@@ -63,7 +62,6 @@ const App = () => (
             
             {/* Protected routes - WITH PageProvider */}
             <Route path="/dashboard" element={<ProtectedWithPage><Dashboard /></ProtectedWithPage>} />
-            <Route path="/subscribers" element={<ProtectedWithPage><Subscribers /></ProtectedWithPage>} />
             <Route path="/flows" element={<ProtectedWithPage><Flows /></ProtectedWithPage>} />
             <Route path="/analytics" element={<ProtectedWithPage><Analytics /></ProtectedWithPage>} />
             <Route path="/welcome" element={<ProtectedWithPage><Welcome /></ProtectedWithPage>} />

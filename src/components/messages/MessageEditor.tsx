@@ -337,18 +337,14 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               placeholder="https://example.com (rend l'image cliquable)"
               value={currentElement.default_action?.url || ""}
               onChange={(e) => {
-                const url = e.target.value.trim();
-                if (url) {
-                  updateElement(0, { 
-                    default_action: { 
-                      type: 'web_url', 
-                      url,
-                      webview_height_ratio: 'full'
-                    } 
-                  });
-                } else {
-                  updateElement(0, { default_action: undefined });
-                }
+                const url = e.target.value;
+                updateElement(0, { 
+                  default_action: url ? { 
+                    type: 'web_url', 
+                    url,
+                    webview_height_ratio: 'full'
+                  } : undefined
+                });
               }}
             />
             <p className="text-xs text-muted-foreground">
@@ -601,18 +597,14 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
                     placeholder="https://example.com"
                     value={currentElement.default_action?.url || ""}
                     onChange={(e) => {
-                      const url = e.target.value.trim();
-                      if (url) {
-                        updateElement(activeCarouselIndex, { 
-                          default_action: { 
-                            type: 'web_url', 
-                            url,
-                            webview_height_ratio: 'full'
-                          } 
-                        });
-                      } else {
-                        updateElement(activeCarouselIndex, { default_action: undefined });
-                      }
+                      const url = e.target.value;
+                      updateElement(activeCarouselIndex, { 
+                        default_action: url ? { 
+                          type: 'web_url', 
+                          url,
+                          webview_height_ratio: 'full'
+                        } : undefined
+                      });
                     }}
                   />
                 </div>

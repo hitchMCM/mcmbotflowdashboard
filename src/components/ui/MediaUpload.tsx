@@ -164,12 +164,9 @@ export function MediaUpload({
 
     // Add image-specific options
     if (!isVideo) {
-      options.cropping = true;
-      options.croppingAspectRatio = aspectRatio;
-      options.croppingShowDimensions = true;
-      options.croppingValidateDimensions = true;
-      options.minImageWidth = minWidth;
-      options.minImageHeight = minHeight;
+      // NO FORCED CROPPING - accept any image size/ratio
+      // User can upload images as-is without modification
+      options.cropping = false;
     } else {
       // Video-specific options
       options.maxVideoFileSize = maxVideoSize * 1024 * 1024; // Convert MB to bytes
@@ -291,30 +288,32 @@ export function MediaUpload({
 
       {/* Upload buttons */}
       {!value && (
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 border-dashed border-white/20 hover:border-primary/50"
-            onClick={handleOpenWidget}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4 mr-2" />
-            )}
-            {uploadLabel}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowUrlInput(!showUrlInput)}
-            title="Enter URL manually"
-          >
-            <Link2 className="h-4 w-4" />
-          </Button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 border-dashed border-white/20 hover:border-primary/50"
+              onClick={() => setShowUrlInput(!showUrlInput)}
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              Coller URL d'image
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-white/20"
+              onClick={handleOpenWidget}
+              disabled={isLoading}
+              title="Upload via Cloudinary"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       )}
 

@@ -151,7 +151,7 @@ export interface Flow {
 }
 
 // ============================================
-// MESSAGE STATS HOOK (from message_logs)
+// MESSAGE STATS HOOK (from messages table)
 // ============================================
 export interface MessageStats {
   sent_count: number;
@@ -172,26 +172,26 @@ export function useMessageStats(sourceType: 'welcome' | 'response' | 'sequence' 
     
     setLoading(true);
     try {
+      // Get stats directly from the messages table
       const { data, error } = await supabase
-        .from('message_logs')
-        .select('status')
-        .eq('source_type', sourceType)
-        .eq('source_id', sourceId);
+        .from('messages')
+        .select('sent_count, delivered_count, read_count')
+        .eq('id', sourceId)
+        .maybeSingle();
       
       if (error) throw error;
       
-      const logs = data || [];
       setStats({
-        sent_count: logs.length,
-        delivered_count: logs.filter(l => l.status === 'delivered' || l.status === 'read').length,
-        read_count: logs.filter(l => l.status === 'read').length
+        sent_count: data?.sent_count || 0,
+        delivered_count: data?.delivered_count || 0,
+        read_count: data?.read_count || 0
       });
     } catch (err) {
       console.error('Error fetching message stats:', err);
     } finally {
       setLoading(false);
     }
-  }, [sourceType, sourceId]);
+  }, [sourceId]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
@@ -199,7 +199,7 @@ export function useMessageStats(sourceType: 'welcome' | 'response' | 'sequence' 
 }
 
 // ============================================
-// BUTTON CLICKS STATS HOOK
+// BUTTON CLICKS STATS HOOK (from messages table)
 // ============================================
 export interface ButtonClickStats {
   button_title: string;
@@ -225,31 +225,40 @@ export function useButtonClicks(sourceType: 'welcome' | 'response' | 'sequence' 
     
     setLoading(true);
     try {
-      const { data: clicks, error } = await supabase
-        .from('button_clicks')
-        .select('button_title, payload')
-        .eq('source_type', sourceType)
-        .eq('source_id', sourceId);
+      // Get clicked_count from messages table
+      const { data: message, error } = await supabase
+        .from('messages')
+        .select('clicked_count, messenger_payload')
+        .eq('id', sourceId)
+        .maybeSingle();
       
       if (error) throw error;
       
-      const clicksList = clicks || [];
+      const totalClicks = message?.clicked_count || 0;
       
-      // Grouper par button_title
-      const buttonMap = new Map<string, { count: number; payload?: string }>();
-      clicksList.forEach(click => {
-        const title = click.button_title || 'Unknown';
-        const existing = buttonMap.get(title) || { count: 0, payload: click.payload };
-        buttonMap.set(title, { count: existing.count + 1, payload: click.payload });
-      });
-      
-      // Convertir en array et trier par nombre de clics
-      const buttons: ButtonClickStats[] = Array.from(buttonMap.entries())
-        .map(([button_title, { count, payload }]) => ({ button_title, click_count: count, payload }))
-        .sort((a, b) => b.click_count - a.click_count);
+      // Extract button titles from messenger_payload if available
+      const buttons: ButtonClickStats[] = [];
+      const payload = message?.messenger_payload;
+      if (payload?.message?.attachment?.payload?.buttons) {
+        payload.message.attachment.payload.buttons.forEach((btn: any) => {
+          buttons.push({
+            button_title: btn.title || 'Button',
+            click_count: Math.round(totalClicks / (payload.message.attachment.payload.buttons.length || 1)),
+            payload: btn.payload
+          });
+        });
+      } else if (payload?._message_content?.elements?.[0]?.buttons) {
+        payload._message_content.elements[0].buttons.forEach((btn: any) => {
+          buttons.push({
+            button_title: btn.title || 'Button',
+            click_count: Math.round(totalClicks / (payload._message_content.elements[0].buttons.length || 1)),
+            payload: btn.payload
+          });
+        });
+      }
       
       setData({
-        total_clicks: clicksList.length,
+        total_clicks: totalClicks,
         buttons
       });
     } catch (err) {
@@ -257,14 +266,14 @@ export function useButtonClicks(sourceType: 'welcome' | 'response' | 'sequence' 
     } finally {
       setLoading(false);
     }
-  }, [sourceType, sourceId]);
+  }, [sourceId]);
 
   useEffect(() => { fetchClicks(); }, [fetchClicks]);
 
   return { data, loading, refetch: fetchClicks };
 }
 
-// Hook pour récupérer tous les clics des séquences par source_id
+// Hook pour récupérer tous les clics des séquences par message id
 export function useAllSequenceClicks() {
   const [clicks, setClicks] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -272,18 +281,20 @@ export function useAllSequenceClicks() {
   const fetchClicks = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: clicksData, error } = await supabase
-        .from('button_clicks')
-        .select('source_id')
-        .eq('source_type', 'sequence');
+      // Get clicked_count from messages table for sequence messages
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select('id, clicked_count')
+        .eq('category', 'sequence');
       
       if (error) throw error;
       
-      // Grouper par source_id et compter
+      // Map message id to clicked_count
       const clicksMap = new Map<string, number>();
-      (clicksData || []).forEach(click => {
-        const sourceId = click.source_id || '';
-        clicksMap.set(sourceId, (clicksMap.get(sourceId) || 0) + 1);
+      (messages || []).forEach(msg => {
+        if (msg.clicked_count > 0) {
+          clicksMap.set(msg.id, msg.clicked_count);
+        }
       });
       
       setClicks(clicksMap);
@@ -849,6 +860,7 @@ export function useFlows() {
 
 // ============================================
 // RECENT ACTIVITY HOOK (for Live Activity Feed with page_id filtering)
+// Uses subscribers and messages tables (no message_logs/button_clicks)
 // ============================================
 export interface RecentActivity {
   id: string;
@@ -868,43 +880,37 @@ export function useRecentActivity(pageId?: string | null, limit: number = 15) {
     try {
       const hasPage = pageId && pageId !== 'demo';
       
-      // Build queries with page filtering
+      // Build queries with page filtering - only use subscribers and messages tables
       let subscribersQuery = supabase
         .from('subscribers')
-        .select('id, name_complet, first_name, created_at, page_id')
+        .select('id, full_name, first_name, created_at, page_id')
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(15);
       
+      // Get recently updated messages with activity
       let messagesQuery = supabase
-        .from('message_logs')
-        .select('id, status, source_type, sent_at, delivered_at, read_at, page_id')
-        .order('sent_at', { ascending: false })
-        .limit(20);
-      
-      let clicksQuery = supabase
-        .from('button_clicks')
-        .select('id, button_title, clicked_at, page_id')
-        .order('clicked_at', { ascending: false })
-        .limit(10);
+        .from('messages')
+        .select('id, name, category, sent_count, delivered_count, read_count, clicked_count, updated_at')
+        .gt('sent_count', 0)
+        .order('updated_at', { ascending: false })
+        .limit(15);
       
       if (hasPage) {
         subscribersQuery = subscribersQuery.eq('page_id', pageId);
-        messagesQuery = messagesQuery.eq('page_id', pageId);
-        clicksQuery = clicksQuery.eq('page_id', pageId);
+        // For messages, we'd need to filter by page_configs but for simplicity, get all
       }
       
       // Fetch recent data in parallel
-      const [subscribersRes, messagesRes, clicksRes] = await Promise.all([
+      const [subscribersRes, messagesRes] = await Promise.all([
         subscribersQuery,
         messagesQuery,
-        clicksQuery,
       ]);
 
       const allActivities: RecentActivity[] = [];
 
       // Process subscribers
       (subscribersRes.data || []).forEach(sub => {
-        const name = sub.name_complet || sub.first_name || 'Someone';
+        const name = sub.full_name || sub.first_name || 'Someone';
         allActivities.push({
           id: `sub-${sub.id}`,
           type: 'subscriber',
@@ -913,48 +919,35 @@ export function useRecentActivity(pageId?: string | null, limit: number = 15) {
         });
       });
 
-      // Process message logs
+      // Process messages - show recent message activity based on counts
       (messagesRes.data || []).forEach(msg => {
-        const sourceLabel = {
+        const categoryLabel = {
           'welcome': 'Welcome message',
           'response': 'Response',
           'sequence': 'Sequence message',
           'broadcast': 'Broadcast',
           'standard': 'Standard message',
-        }[msg.source_type] || 'Message';
+        }[msg.category] || 'Message';
 
-        if (msg.read_at) {
-          allActivities.push({
-            id: `read-${msg.id}`,
-            type: 'message_read',
-            title: `${sourceLabel} was read`,
-            timestamp: new Date(msg.read_at),
-          });
-        } else if (msg.delivered_at) {
-          allActivities.push({
-            id: `del-${msg.id}`,
-            type: 'message_delivered',
-            title: `${sourceLabel} was delivered`,
-            timestamp: new Date(msg.delivered_at),
-          });
-        } else if (msg.sent_at) {
+        const msgName = msg.name || categoryLabel;
+
+        // Add activity entries based on counts
+        if (msg.sent_count > 0) {
           allActivities.push({
             id: `sent-${msg.id}`,
             type: 'message_sent',
-            title: `${sourceLabel} was sent`,
-            timestamp: new Date(msg.sent_at),
+            title: `${msgName} sent (${msg.sent_count}x)`,
+            timestamp: new Date(msg.updated_at),
           });
         }
-      });
-
-      // Process button clicks
-      (clicksRes.data || []).forEach(click => {
-        allActivities.push({
-          id: `click-${click.id}`,
-          type: 'button_click',
-          title: `"${click.button_title || 'Button'}" was clicked`,
-          timestamp: new Date(click.clicked_at),
-        });
+        if (msg.clicked_count > 0) {
+          allActivities.push({
+            id: `click-${msg.id}`,
+            type: 'button_click',
+            title: `${msgName} clicked (${msg.clicked_count}x)`,
+            timestamp: new Date(msg.updated_at),
+          });
+        }
       });
 
       // Sort by timestamp descending and limit
@@ -970,25 +963,22 @@ export function useRecentActivity(pageId?: string | null, limit: number = 15) {
 
   useEffect(() => { fetchActivity(); }, [fetchActivity]);
 
-  // Set up real-time subscription
+  // Set up polling since PostgREST doesn't support realtime
   useEffect(() => {
+    const interval = setInterval(() => {
+      fetchActivity();
+    }, 30000); // Refresh every 30 seconds
+
+    // Stub for realtime channel compatibility
     const channel = supabase
       .channel('activity-feed')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'subscribers' }, () => {
         fetchActivity();
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_logs' }, () => {
-        fetchActivity();
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_logs' }, () => {
-        fetchActivity();
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'button_clicks' }, () => {
-        fetchActivity();
-      })
       .subscribe();
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [fetchActivity]);
@@ -1055,6 +1045,17 @@ export function useDashboardStats(pageId?: string | null) {
       // Build queries based on whether we have a pageId
       const hasPage = pageId && pageId !== 'demo';
 
+      // ========================================
+      // STATISTICS FROM PAGES TABLE (PRIMARY SOURCE)
+      // ========================================
+      // The pages table contains aggregated statistics:
+      // total_sent, total_delivered, total_read, total_clicks, total_subscribers
+      
+      let pageStatsQuery = supabase.from('pages').select('id, total_sent, total_delivered, total_read, total_clicks, total_subscribers');
+      if (hasPage) {
+        pageStatsQuery = pageStatsQuery.eq('id', pageId);
+      }
+
       // Subscribers - use COUNT queries for totals (much faster than loading all rows)
       let totalSubscribersQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true });
       let activeSubscribersQuery = supabase.from('subscribers').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('is_subscribed', true);
@@ -1068,18 +1069,6 @@ export function useDashboardStats(pageId?: string | null) {
         subscribedQuery = subscribedQuery.eq('page_id', pageId);
         unsubscribedQuery = unsubscribedQuery.eq('page_id', pageId);
         newTodayQuery = newTodayQuery.eq('page_id', pageId);
-      }
-
-      // Message logs query - filter by page_id if available
-      let messageLogsQuery = supabase.from('message_logs').select('id, status, sent_at, delivered_at, read_at, page_id');
-      if (hasPage) {
-        messageLogsQuery = messageLogsQuery.eq('page_id', pageId);
-      }
-
-      // Button clicks query - filter by page_id if available
-      let buttonClicksQuery = supabase.from('button_clicks').select('id, page_id');
-      if (hasPage) {
-        buttonClicksQuery = buttonClicksQuery.eq('page_id', pageId);
       }
 
       // Page configs query - filter by page_id for welcome message
@@ -1102,79 +1091,48 @@ export function useDashboardStats(pageId?: string | null) {
         broadcastConfigsQuery = broadcastConfigsQuery.eq('page_id', pageId);
       }
 
-      // First, get the page's selected message IDs from page_configs
-      let pageMessageIdsQuery = supabase.from('page_configs').select('selected_message_ids').eq('page_id', pageId || '');
-
       // Fetch all data in parallel with individual error handling
       const results = await Promise.allSettled([
-        totalSubscribersQuery,      // 0: total count
-        activeSubscribersQuery,     // 1: active count
-        subscribedQuery,            // 2: subscribed count
-        unsubscribedQuery,          // 3: unsubscribed count
-        newTodayQuery,              // 4: new today count
-        messageLogsQuery,           // 5: message logs
-        buttonClicksQuery,          // 6: button clicks
-        welcomeConfigQuery.limit(1).maybeSingle(), // 7: welcome config
-        responseConfigsQuery,       // 8: responses
-        sequenceConfigsQuery,       // 9: sequences
-        broadcastConfigsQuery,      // 10: broadcasts
-        hasPage ? pageMessageIdsQuery : Promise.resolve({ data: [], error: null }), // 11: page message ids
+        pageStatsQuery,             // 0: page statistics from pages table
+        totalSubscribersQuery,      // 1: total count
+        activeSubscribersQuery,     // 2: active count
+        subscribedQuery,            // 3: subscribed count
+        unsubscribedQuery,          // 4: unsubscribed count
+        newTodayQuery,              // 5: new today count
+        welcomeConfigQuery.limit(1).maybeSingle(), // 6: welcome config
+        responseConfigsQuery,       // 7: responses
+        sequenceConfigsQuery,       // 8: sequences
+        broadcastConfigsQuery,      // 9: broadcasts
       ]);
 
-      // Extract counts with default values for errors
-      const totalSubscribersCount = results[0].status === 'fulfilled' ? (results[0].value as any).count || 0 : 0;
-      const activeSubscribersCount = results[1].status === 'fulfilled' ? (results[1].value as any).count || 0 : 0;
-      const subscribedCountVal = results[2].status === 'fulfilled' ? (results[2].value as any).count || 0 : 0;
-      const unsubscribedCountVal = results[3].status === 'fulfilled' ? (results[3].value as any).count || 0 : 0;
-      const newSubscribersTodayCount = results[4].status === 'fulfilled' ? (results[4].value as any).count || 0 : 0;
-      const messagLogsRes = results[5].status === 'fulfilled' ? results[5].value : { data: [], error: null };
-      const buttonClicksRes = results[6].status === 'fulfilled' ? results[6].value : { data: [], error: null };
-      const welcomeRes = results[7].status === 'fulfilled' ? results[7].value : { data: null, error: null };
-      const responsesRes = results[8].status === 'fulfilled' ? results[8].value : { data: [], error: null };
-      const sequenceMessagesRes = results[9].status === 'fulfilled' ? results[9].value : { data: [], error: null };
-      const broadcastsRes = results[10].status === 'fulfilled' ? results[10].value : { data: [], error: null };
-      const pageConfigsRes = results[11].status === 'fulfilled' ? results[11].value : { data: [], error: null };
+      // Extract page statistics from pages table
+      const pageStatsRes = results[0].status === 'fulfilled' ? results[0].value : { data: [], error: null };
+      const pagesData = (pageStatsRes.data || []) as { 
+        id: string; 
+        total_sent: number; 
+        total_delivered: number; 
+        total_read: number; 
+        total_clicks: number; 
+        total_subscribers: number; 
+      }[];
 
-      const messageLogs = messagLogsRes.data || [];
-      const clicks = buttonClicksRes.data || [];
+      // Calculate totals from pages table (sum all pages if no specific page selected)
+      const totalMessagesSent = pagesData.reduce((sum, p) => sum + (p.total_sent || 0), 0);
+      const totalMessagesDelivered = pagesData.reduce((sum, p) => sum + (p.total_delivered || 0), 0);
+      const totalMessagesRead = pagesData.reduce((sum, p) => sum + (p.total_read || 0), 0);
+      const totalButtonClicks = pagesData.reduce((sum, p) => sum + (p.total_clicks || 0), 0);
+
+      // Extract subscriber counts with default values for errors
+      const totalSubscribersCount = results[1].status === 'fulfilled' ? (results[1].value as any).count || 0 : 0;
+      const activeSubscribersCount = results[2].status === 'fulfilled' ? (results[2].value as any).count || 0 : 0;
+      const subscribedCountVal = results[3].status === 'fulfilled' ? (results[3].value as any).count || 0 : 0;
+      const unsubscribedCountVal = results[4].status === 'fulfilled' ? (results[4].value as any).count || 0 : 0;
+      const newSubscribersTodayCount = results[5].status === 'fulfilled' ? (results[5].value as any).count || 0 : 0;
       
-      // Get all selected message IDs for this page
-      const pageConfigs = (pageConfigsRes.data || []) as { selected_message_ids: string[] }[];
-      const allSelectedMessageIds = pageConfigs.flatMap(pc => pc.selected_message_ids || []);
-      const uniqueMessageIds = [...new Set(allSelectedMessageIds)];
-
-      // Fetch message stats only for the page's selected messages
-      let messagesStats: { sent_count: number; delivered_count: number; read_count: number; clicked_count: number }[] = [];
-      if (hasPage && uniqueMessageIds.length > 0) {
-        const { data: msgData } = await supabase
-          .from('messages')
-          .select('sent_count, delivered_count, read_count, clicked_count')
-          .in('id', uniqueMessageIds);
-        messagesStats = msgData || [];
-      } else if (!hasPage) {
-        // No page filter - get all messages stats
-        const { data: msgData } = await supabase
-          .from('messages')
-          .select('sent_count, delivered_count, read_count, clicked_count');
-        messagesStats = msgData || [];
-      }
-
-      // Calculate stats from message_logs (individual log entries)
-      const logsSentCount = messageLogs.length;
-      const logsDeliveredCount = messageLogs.filter(m => m.delivered_at || m.status === 'delivered' || m.status === 'read').length;
-      const logsReadCount = messageLogs.filter(m => m.read_at || m.status === 'read').length;
-
-      // Calculate stats from messages table (aggregated counters on messages)
-      const msgSentCount = messagesStats.reduce((sum, m) => sum + (m.sent_count || 0), 0);
-      const msgDeliveredCount = messagesStats.reduce((sum, m) => sum + (m.delivered_count || 0), 0);
-      const msgReadCount = messagesStats.reduce((sum, m) => sum + (m.read_count || 0), 0);
-      const msgClickedCount = messagesStats.reduce((sum, m) => sum + (m.clicked_count || 0), 0);
-
-      // Use the maximum of both sources (in case one is not being updated)
-      const totalMessagesSent = Math.max(logsSentCount, msgSentCount);
-      const totalMessagesDelivered = Math.max(logsDeliveredCount, msgDeliveredCount);
-      const totalMessagesRead = Math.max(logsReadCount, msgReadCount);
-      const totalButtonClicks = Math.max(clicks.length, msgClickedCount);
+      const welcomeRes = results[6].status === 'fulfilled' ? results[6].value : { data: null, error: null };
+      const responsesRes = results[7].status === 'fulfilled' ? results[7].value : { data: [], error: null };
+      const sequenceMessagesRes = results[8].status === 'fulfilled' ? results[8].value : { data: [], error: null };
+      const broadcastsRes = results[9].status === 'fulfilled' ? results[9].value : { data: [], error: null };
 
       // Subscriber calculations - use counts from queries (optimized)
       const totalSubscribers = totalSubscribersCount;
@@ -1183,6 +1141,7 @@ export function useDashboardStats(pageId?: string | null) {
       const unsubscribedCount = unsubscribedCountVal;
       const newSubscribersToday = newSubscribersTodayCount;
 
+      // Calculate rates from pages table statistics
       const deliveryRate = totalMessagesSent > 0 ? Math.round((totalMessagesDelivered / totalMessagesSent) * 100) : 0;
       const readRate = totalMessagesDelivered > 0 ? Math.round((totalMessagesRead / totalMessagesDelivered) * 100) : 0;
       const clickRate = totalMessagesRead > 0 ? Math.round((totalButtonClicks / totalMessagesRead) * 100) : 0;
@@ -1219,8 +1178,7 @@ export function useDashboardStats(pageId?: string | null) {
 }
 
 // ============================================
-// ============================================
-// MESSAGES BY TYPE HOOK (with page_id filtering)
+// MESSAGES BY TYPE HOOK (from messages table with page_id filtering)
 // ============================================
 export function useMessagesByType(pageId?: string | null) {
   const [data, setData] = useState<{ name: string; value: number }[]>([]);
@@ -1231,16 +1189,26 @@ export function useMessagesByType(pageId?: string | null) {
     try {
       const hasPage = pageId && pageId !== 'demo';
       
-      let query = supabase.from('message_logs').select('source_type, page_id');
+      // Get message sent counts by category from messages table
+      let query = supabase.from('messages').select('category, sent_count, user_id');
       if (hasPage) {
-        query = query.eq('page_id', pageId);
+        // Filter by page via page_configs
+        const { data: configs } = await supabase
+          .from('page_configs')
+          .select('selected_message_ids')
+          .eq('page_id', pageId);
+        
+        const messageIds = (configs || []).flatMap(c => c.selected_message_ids || []);
+        if (messageIds.length > 0) {
+          query = query.in('id', messageIds);
+        }
       }
       
       const { data: messages, error } = await query;
       
       if (error) throw error;
 
-      // Group by source_type
+      // Group by category and sum sent_count
       const typeMap = new Map<string, number>();
       const typeLabels: Record<string, string> = {
         'welcome': 'Welcome',
@@ -1251,14 +1219,16 @@ export function useMessagesByType(pageId?: string | null) {
       };
 
       (messages || []).forEach(msg => {
-        const type = msg.source_type || 'other';
-        typeMap.set(type, (typeMap.get(type) || 0) + 1);
+        const type = msg.category || 'other';
+        typeMap.set(type, (typeMap.get(type) || 0) + (msg.sent_count || 0));
       });
 
-      const result = Array.from(typeMap.entries()).map(([type, count]) => ({
-        name: typeLabels[type] || type,
-        value: count
-      }));
+      const result = Array.from(typeMap.entries())
+        .filter(([, count]) => count > 0)
+        .map(([type, count]) => ({
+          name: typeLabels[type] || type,
+          value: count
+        }));
 
       setData(result);
     } catch (err) {

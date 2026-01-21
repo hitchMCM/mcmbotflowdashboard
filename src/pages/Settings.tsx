@@ -52,6 +52,12 @@ interface Page {
   is_active: boolean;
   created_at?: string;
   access_token?: string | null;
+  // Statistics columns
+  total_sent?: number;
+  total_delivered?: number;
+  total_read?: number;
+  total_clicks?: number;
+  total_subscribers?: number;
 }
 
 export default function Settings() {

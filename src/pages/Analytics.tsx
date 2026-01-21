@@ -142,15 +142,13 @@ export default function Analytics() {
       startDate.setDate(startDate.getDate() - days);
       const startISO = startDate.toISOString();
 
-      // Fetch all data in parallel - limit only subscribers to prevent blocking
+      // Fetch all data in parallel - using pages and messages tables for stats
       const [
         subscribersCountRes,
         subscribersRecentRes,
         pagesRes,
         configsRes,
         messagesRes,
-        messageLogsRes,
-        buttonClicksRes
       ] = await Promise.all([
         // Get total count of subscribers
         supabase.from('subscribers').select('id', { count: 'exact', head: true }),
@@ -158,21 +156,18 @@ export default function Analytics() {
         supabase.from('subscribers').select('id, full_name, avatar_url, subscribed_at, is_active, page_id')
           .order('subscribed_at', { ascending: false })
           .limit(500),
+        // Pages table has aggregated stats: total_sent, total_delivered, total_read, total_clicks
         supabase.from('pages').select('*'),
         supabase.from('page_configs').select('*'),
-        supabase.from('messages').select('id, category, sent_count, delivered_count, read_count, clicked_count, created_at'),
-        supabase.from('message_logs').select('id, source_type, page_id'),
-        supabase.from('button_clicks').select('id, button_title, source_type, page_id'),
+        supabase.from('messages').select('id, name, category, sent_count, delivered_count, read_count, clicked_count, created_at, messenger_payload'),
       ]);
 
       // Use count for totals, recent data for display
       const totalSubscribersCount = subscribersCountRes.count || 0;
       const subscribers = subscribersRecentRes.data || [];
-      const allPages = pagesRes.data || [];
+      const allPages = (pagesRes.data || []) as any[];
       const configs = configsRes.data || [];
       const messages = messagesRes.data || [];
-      const messageLogs = messageLogsRes.data || [];
-      const buttonClicks = buttonClicksRes.data || [];
 
       // Debug: log data fetch results
       console.log('Analytics Debug:', {
@@ -181,20 +176,13 @@ export default function Analytics() {
         pages: allPages.length,
         configs: configs.length,
         messages: messages.length,
-        messageLogs: messageLogs.length,
-        buttonClicks: buttonClicks.length,
-        // Errors
-        buttonClicksError: buttonClicksRes.error?.message || 'none',
-        messageLogsError: messageLogsRes.error?.message || 'none',
-        messagesError: messagesRes.error?.message || 'none',
-        // Sample data
-        firstButtonClicks: buttonClicks.slice(0, 3),
-        messagesSentCounts: messages.slice(0, 5).map(m => ({ 
-          category: m.category, 
-          sent: m.sent_count, 
-          clicked: m.clicked_count 
+        // Sample data from pages table
+        pagesStats: allPages.map(p => ({
+          name: p.name,
+          total_sent: p.total_sent,
+          total_clicks: p.total_clicks
         })),
-        // Totals calculated
+        // Totals calculated from messages
         msgClickedTotal: messages.reduce((sum, m) => sum + (m.clicked_count || 0), 0),
         msgSentTotal: messages.reduce((sum, m) => sum + (m.sent_count || 0), 0),
       });
@@ -207,52 +195,69 @@ export default function Analytics() {
       const activeSubscribers = subscribers.filter(s => s.is_active).length;
       const newSubscribersThisPeriod = subscribersInPeriod.length;
 
-      // Calculate sends from message_logs table (individual log entries)
-      const logsWelcome = messageLogs.filter((l: any) => l.source_type === 'welcome').length;
-      const logsResponse = messageLogs.filter((l: any) => l.source_type === 'response').length;
-      const logsSequence = messageLogs.filter((l: any) => l.source_type === 'sequence').length;
-      const logsBroadcast = messageLogs.filter((l: any) => l.source_type === 'broadcast').length;
-      const logsTotalSent = messageLogs.length;
-
       // Calculate sends from messages table (sent_count column)
-      const msgWelcome = messages
+      const welcomeSends = messages
         .filter(m => m.category === 'welcome')
         .reduce((sum, m) => sum + (m.sent_count || 0), 0);
-      const msgResponse = messages
+      const responseSends = messages
         .filter(m => m.category === 'response')
         .reduce((sum, m) => sum + (m.sent_count || 0), 0);
-      const msgSequence = messages
+      const sequenceSends = messages
         .filter(m => m.category === 'sequence')
         .reduce((sum, m) => sum + (m.sent_count || 0), 0);
-      const msgBroadcast = messages
+      const broadcastSends = messages
         .filter(m => m.category === 'broadcast')
         .reduce((sum, m) => sum + (m.sent_count || 0), 0);
-      const msgTotalSent = msgWelcome + msgResponse + msgSequence + msgBroadcast;
-
-      // Use max of both sources (same logic as Dashboard)
-      const welcomeSends = Math.max(logsWelcome, msgWelcome);
-      const responseSends = Math.max(logsResponse, msgResponse);
-      const sequenceSends = Math.max(logsSequence, msgSequence);
-      const broadcastSends = Math.max(logsBroadcast, msgBroadcast);
-      const totalSends = Math.max(logsTotalSent, msgTotalSent);
       
-      // Button clicks - use clicked_count from messages OR button_clicks table count
+      // Get totals from pages table (primary source) or fallback to messages table
+      const pagesTotalSent = allPages.reduce((sum, p) => sum + (p.total_sent || 0), 0);
+      const msgTotalSent = welcomeSends + responseSends + sequenceSends + broadcastSends;
+      const totalSends = Math.max(pagesTotalSent, msgTotalSent);
+      
+      // Button clicks - from pages table or messages table
+      const pagesTotalClicks = allPages.reduce((sum, p) => sum + (p.total_clicks || 0), 0);
       const msgClickedCount = messages.reduce((sum, m) => sum + (m.clicked_count || 0), 0);
-      const totalButtonClicks = Math.max(buttonClicks.length, msgClickedCount);
+      const totalButtonClicks = Math.max(pagesTotalClicks, msgClickedCount);
 
       // Calculate averages
       const avgSendsPerDay = days > 0 ? Math.round(totalSends / days * 10) / 10 : 0;
       const avgSubscribersPerDay = days > 0 ? Math.round(newSubscribersThisPeriod / days * 10) / 10 : 0;
 
-      // Top button clicks
-      const buttonClickMap = new Map<string, { clicks: number; source_type: string }>();
-      buttonClicks.forEach((bc: any) => {
-        const key = bc.button_title || 'Unknown';
-        const existing = buttonClickMap.get(key) || { clicks: 0, source_type: bc.source_type };
-        buttonClickMap.set(key, { clicks: existing.clicks + 1, source_type: bc.source_type });
+      // Top button clicks - extract from messages messenger_payload
+      const buttonClickMap = new Map<string, { clicks: number; category: string }>();
+      messages.forEach((msg: any) => {
+        if (msg.clicked_count > 0) {
+          // Try to extract button titles from messenger_payload
+          const payload = msg.messenger_payload;
+          const buttons = payload?._message_content?.elements?.[0]?.buttons || 
+                         payload?.message?.attachment?.payload?.buttons ||
+                         payload?.message?.attachment?.payload?.elements?.[0]?.buttons ||
+                         [];
+          
+          if (buttons.length > 0) {
+            // Distribute clicks across buttons
+            const clicksPerButton = Math.round(msg.clicked_count / buttons.length);
+            buttons.forEach((btn: any) => {
+              const title = btn.title || 'Button';
+              const existing = buttonClickMap.get(title) || { clicks: 0, category: msg.category };
+              buttonClickMap.set(title, { 
+                clicks: existing.clicks + clicksPerButton, 
+                category: msg.category 
+              });
+            });
+          } else {
+            // No button info, use message name
+            const title = msg.name || `${msg.category} message`;
+            const existing = buttonClickMap.get(title) || { clicks: 0, category: msg.category };
+            buttonClickMap.set(title, { 
+              clicks: existing.clicks + msg.clicked_count, 
+              category: msg.category 
+            });
+          }
+        }
       });
       const topClicks = Array.from(buttonClickMap.entries())
-        .map(([button_title, data]) => ({ button_title, ...data }))
+        .map(([button_title, data]) => ({ button_title, clicks: data.clicks, source_type: data.category }))
         .sort((a, b) => b.clicks - a.clicks)
         .slice(0, 10);
       setTopButtonClicks(topClicks);
@@ -344,32 +349,18 @@ export default function Analytics() {
       });
       setHourlyHeatmap(hourlyData);
 
-      // Page comparison - use page_configs.selected_message_ids to link messages to pages
+      // Page comparison - use stats from pages table
       const pageStats = allPages.map(page => {
         const pageSubscribers = subscribers.filter(s => s.page_id === page.id);
-        const pageLogs = messageLogs.filter(l => l.page_id === page.id);
         const pageConfigs = configs.filter(c => c.page_id === page.id);
-        const pageButtonClicks = buttonClicks.filter((bc: any) => bc.page_id === page.id);
         
-        // Get selected message IDs for this page from page_configs
-        const pageMessageIds = pageConfigs.flatMap(c => c.selected_message_ids || []);
-        const uniquePageMessageIds = [...new Set(pageMessageIds)];
-        
-        // Filter messages that belong to this page via selected_message_ids
-        const pageMessages = messages.filter(m => uniquePageMessageIds.includes(m.id));
-        
-        // Use max of logs count vs messages sent_count sum
-        const logsCount = pageLogs.length;
-        const msgSentCount = pageMessages.reduce((sum, m) => sum + (m.sent_count || 0), 0);
-        const pageSends = Math.max(logsCount, msgSentCount);
-        
-        // Use max of button_clicks count vs messages clicked_count sum
-        const msgClickCount = pageMessages.reduce((sum, m) => sum + (m.clicked_count || 0), 0);
-        const pageClicks = Math.max(pageButtonClicks.length, msgClickCount);
+        // Use stats directly from pages table
+        const pageSends = page.total_sent || 0;
+        const pageClicks = page.total_clicks || 0;
         
         return {
           name: page.name,
-          subscribers: pageSubscribers.length,
+          subscribers: page.total_subscribers || pageSubscribers.length,
           sends: pageSends,
           clicks: pageClicks,
           activeConfigs: pageConfigs.filter(c => c.is_enabled).length,

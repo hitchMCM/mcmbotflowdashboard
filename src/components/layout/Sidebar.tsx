@@ -34,7 +34,6 @@ import { logout, useAuth } from "@/components/auth/ProtectedRoute";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Configuration", href: "/configuration", icon: Sliders },
-  { name: "Subscribers", href: "/subscribers", icon: Users },
   { name: "Welcome", href: "/welcome", icon: MessageSquare },
   { name: "Standard Reply", href: "/responses", icon: Zap },
   { name: "Sequences", href: "/sequences", icon: Clock },
