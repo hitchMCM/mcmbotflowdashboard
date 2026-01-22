@@ -83,12 +83,11 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
           return;
         }
         
-        // Fetch only user's own messages
+        // Fetch messages that match IDs and belong to user OR are global
         let query = supabase
           .from('messages')
           .select('*')
           .in('id', Array.from(messageIds))
-          .eq('user_id', userId)
           .order('created_at', { ascending: false });
         
         if (category) {
@@ -97,13 +96,17 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
         
         const { data, error: fetchError } = await query;
         if (fetchError) throw fetchError;
-        setMessages(data || []);
+        
+        // Filter: user's own messages OR global OR unassigned (null user_id)
+        const filtered = (data || []).filter(m => 
+          m.user_id === userId || m.is_global === true || m.user_id === null
+        );
+        setMessages(filtered);
       } else {
-        // Fetch ONLY user's own messages (strict filtering)
+        // Fetch user's own messages + global messages + unassigned messages
         let query = supabase
           .from('messages')
           .select('*')
-          .eq('user_id', userId)
           .order('created_at', { ascending: false });
         
         if (category) {
@@ -113,7 +116,17 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
         const { data, error: fetchError } = await query;
         
         if (fetchError) throw fetchError;
-        setMessages(data || []);
+        
+        // Debug: log all messages and their user_ids
+        console.log('[useMessages] Raw data from DB:', data?.length, 'messages');
+        console.log('[useMessages] Sample user_ids:', data?.slice(0, 5).map(m => ({ id: m.id, user_id: m.user_id, is_global: m.is_global, name: m.name })));
+        
+        // Filter: user's own messages OR global OR unassigned (null user_id)
+        const filtered = (data || []).filter(m => 
+          m.user_id === userId || m.is_global === true || m.user_id === null
+        );
+        console.log('[useMessages] Fetched', data?.length, 'total, filtered to', filtered.length, 'for user', userId);
+        setMessages(filtered);
       }
       
       setError(null);
