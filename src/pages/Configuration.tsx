@@ -20,13 +20,15 @@ import {
   Target,
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Copy
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { usePage } from "@/contexts/PageContext";
 import { useMessages, usePageConfigs } from "@/hooks/useMessages";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/contexts/SettingsContext";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   MessageCategory, 
   CATEGORY_LABELS, 
@@ -37,6 +39,21 @@ import {
   SELECTION_MODE_DESCRIPTIONS
 } from "@/types/messages";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Only 4 categories for trigger configuration
 const TRIGGER_CATEGORIES: MessageCategory[] = ['welcome', 'response', 'sequence', 'broadcast'];
@@ -64,13 +81,18 @@ interface TriggerConfig {
 }
 
 export default function Configuration() {
-  const { currentPage } = usePage();
+  const { currentPage, pages } = usePage();
   const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState<MessageCategory>("welcome");
   const [saving, setSaving] = useState(false);
   const [changedCategories, setChangedCategories] = useState<Set<MessageCategory>>(new Set());
   const { timezone, t } = useSettings();
+  
+  // Clone configuration dialog state
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
+  const [cloneFromPageId, setCloneFromPageId] = useState<string>("");
+  const [cloning, setCloning] = useState(false);
   
   // Timezone offset mapping (in hours from UTC)
   const timezoneOffsets: Record<string, number> = {
@@ -323,6 +345,100 @@ export default function Configuration() {
     }
   };
 
+  // Handle cloning configuration from another page
+  const handleCloneConfiguration = async () => {
+    if (!currentPage?.id || !cloneFromPageId) {
+      toast({
+        title: "❌ Error",
+        description: "Please select a page to clone from",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (currentPage.id === cloneFromPageId) {
+      toast({
+        title: "❌ Error",
+        description: "Cannot clone from the same page",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setCloning(true);
+    try {
+      // Get existing page_configs from source page
+      const { data: sourceConfigs, error: configError } = await supabase
+        .from('page_configs')
+        .select('*')
+        .eq('page_id', cloneFromPageId);
+
+      if (configError) throw configError;
+
+      if (!sourceConfigs || sourceConfigs.length === 0) {
+        toast({
+          title: "⚠️ No Configuration",
+          description: "The selected page has no configuration to clone.",
+          variant: "destructive"
+        });
+        setCloning(false);
+        return;
+      }
+
+      // Delete existing configs for current page
+      await supabase
+        .from('page_configs')
+        .delete()
+        .eq('page_id', currentPage.id);
+
+      // Clone configs to current page
+      const newConfigs = sourceConfigs.map(config => ({
+        page_id: currentPage.id,
+        category: config.category,
+        name: config.name,
+        selected_message_ids: config.selected_message_ids,
+        selection_mode: config.selection_mode,
+        fixed_message_id: config.fixed_message_id,
+        messages_count: config.messages_count,
+        delay_hours: config.delay_hours,
+        scheduled_time: config.scheduled_time,
+        scheduled_times: config.scheduled_times,
+        scheduled_date: config.scheduled_date,
+        trigger_keywords: config.trigger_keywords,
+        is_enabled: config.is_enabled
+      }));
+
+      const { error: insertError } = await supabase
+        .from('page_configs')
+        .insert(newConfigs);
+
+      if (insertError) throw insertError;
+
+      // Find source page name for success message
+      const sourcePage = pages.find(p => p.id === cloneFromPageId);
+      toast({
+        title: "✅ Configuration cloned!",
+        description: `${newConfigs.length} configuration(s) cloned from "${sourcePage?.name || 'source page'}"`
+      });
+
+      setShowCloneDialog(false);
+      setCloneFromPageId("");
+      
+      // Reload the page to reflect changes
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Clone error:', error);
+      const errorMessage = error?.message || error?.details || "Failed to clone configuration";
+      toast({
+        title: "❌ Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setCloning(false);
+    }
+  };
+
   const isLoading = configsLoading || welcomeMessages.loading || responseMessages.loading || sequenceMessages.loading || broadcastMessages.loading;
 
   if (isLoading) {
@@ -339,11 +455,24 @@ export default function Configuration() {
     <DashboardLayout pageName="Configuration">
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold">Trigger Configuration</h1>
-          <p className="text-muted-foreground">
-            Configure when and how messages are sent for {currentPage?.name || "your page"}
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Trigger Configuration</h1>
+            <p className="text-muted-foreground">
+              Configure when and how messages are sent for {currentPage?.name || "your page"}
+            </p>
+          </div>
+          {/* Clone from another page button */}
+          {pages.filter(p => p.id !== currentPage?.id).length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowCloneDialog(true)}
+              className="gap-2"
+            >
+              <Copy className="h-4 w-4" />
+              Clone from Page
+            </Button>
+          )}
         </div>
 
         {/* Category Tabs */}
@@ -714,6 +843,52 @@ export default function Configuration() {
           })}
         </Tabs>
       </div>
+
+      {/* Clone Configuration Dialog */}
+      <Dialog open={showCloneDialog} onOpenChange={setShowCloneDialog}>
+        <DialogContent className="glass border-white/10">
+          <DialogHeader>
+            <DialogTitle>Clone Configuration</DialogTitle>
+            <DialogDescription>
+              Clone all trigger configurations from another page to "{currentPage?.name}".
+              This will replace all existing configurations for this page.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Clone from</Label>
+              <Select value={cloneFromPageId} onValueChange={setCloneFromPageId}>
+                <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectValue placeholder="Select a page to clone from" />
+                </SelectTrigger>
+                <SelectContent className="glass border-white/10">
+                  {pages.filter(p => p.id !== currentPage?.id).map((page) => (
+                    <SelectItem key={page.id} value={page.id}>
+                      {page.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                This will copy all message configurations including welcome, response, sequence, broadcast settings, selected messages, and scheduling.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCloneDialog(false)} className="border-white/10">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCloneConfiguration} 
+              disabled={cloning || !cloneFromPageId} 
+              className="bg-gradient-primary"
+            >
+              {cloning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Clone Configuration
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

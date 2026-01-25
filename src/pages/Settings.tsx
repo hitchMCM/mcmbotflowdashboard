@@ -37,6 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const tabs = [
   { id: "general", icon: SettingsIcon },
@@ -71,18 +72,20 @@ export default function Settings() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newPageName, setNewPageName] = useState("");
   const [newPageId, setNewPageId] = useState("");
-  const [newPageToken, setNewPageToken] = useState("");
-  const [showToken, setShowToken] = useState(false);
-  const [configOption, setConfigOption] = useState<"standard" | "clone">("standard");
-  const [cloneFromPageId, setCloneFromPageId] = useState<string>("");
+  const [newWebhookToken, setNewWebhookToken] = useState("");
+  const [newAppTokens, setNewAppTokens] = useState<string[]>(Array(20).fill(""));
+  const [showWebhookToken, setShowWebhookToken] = useState(false);
+  const [showAppTokens, setShowAppTokens] = useState<boolean[]>(Array(20).fill(false));
   const [addingPage, setAddingPage] = useState(false);
   
   // Edit page dialog
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingPage, setEditingPage] = useState<Page | null>(null);
   const [editPageName, setEditPageName] = useState("");
-  const [editPageToken, setEditPageToken] = useState("");
-  const [showEditToken, setShowEditToken] = useState(false);
+  const [editWebhookToken, setEditWebhookToken] = useState("");
+  const [editAppTokens, setEditAppTokens] = useState<string[]>(Array(20).fill(""));
+  const [showEditWebhookToken, setShowEditWebhookToken] = useState(false);
+  const [showEditAppTokens, setShowEditAppTokens] = useState<boolean[]>(Array(20).fill(false));
   const [savingEdit, setSavingEdit] = useState(false);
   
   // Token visibility for page list
@@ -108,12 +111,6 @@ export default function Settings() {
       return;
     }
 
-    // Validate clone selection if clone option is selected
-    if (configOption === "clone" && pages.length > 0 && !cloneFromPageId) {
-      toast({ title: "❌ Error", description: "Please select a page to clone from", variant: "destructive" });
-      return;
-    }
-
     // Validate user ID
     const userId = user?.id;
     if (!userId) {
@@ -123,16 +120,24 @@ export default function Settings() {
 
     setAddingPage(true);
     try {
-      // Create the new page with user_id and token
+      // Build the page data with all tokens
+      const pageData: Record<string, any> = {
+        name: newPageName.trim(),
+        facebook_page_id: newPageId.trim(),
+        access_token_webhook: newWebhookToken.trim() || null,
+        user_id: userId,
+        is_active: true
+      };
+
+      // Add all 20 app tokens
+      newAppTokens.forEach((token, index) => {
+        pageData[`access_token_${index + 1}`] = token.trim() || null;
+      });
+
+      // Create the new page with user_id and all tokens
       const { data: newPage, error: pageError } = await supabase
         .from('pages')
-        .insert({
-          name: newPageName.trim(),
-          facebook_page_id: newPageId.trim(),
-          access_token: newPageToken.trim() || null,
-          user_id: userId,
-          is_active: true
-        })
+        .insert(pageData)
         .select()
         .single();
 
@@ -141,59 +146,15 @@ export default function Settings() {
         throw pageError;
       }
 
-      // If cloning configuration from another page
-      if (configOption === "clone" && cloneFromPageId) {
-        // Get existing page_configs from source page
-        const { data: sourceConfigs, error: configError } = await supabase
-          .from('page_configs')
-          .select('*')
-          .eq('page_id', cloneFromPageId);
-
-        if (configError) throw configError;
-
-        if (sourceConfigs && sourceConfigs.length > 0) {
-          // Clone configs to new page (including all configuration fields)
-          const newConfigs = sourceConfigs.map(config => ({
-            page_id: newPage.id,
-            category: config.category,
-            name: config.name,
-            selected_message_ids: config.selected_message_ids,
-            selection_mode: config.selection_mode,
-            fixed_message_id: config.fixed_message_id,
-            messages_count: config.messages_count,
-            delay_hours: config.delay_hours,
-            scheduled_time: config.scheduled_time,
-            scheduled_date: config.scheduled_date,
-            trigger_keywords: config.trigger_keywords,
-            is_enabled: config.is_enabled
-          }));
-
-          const { error: insertError } = await supabase
-            .from('page_configs')
-            .insert(newConfigs);
-
-          if (insertError) throw insertError;
-          
-          // Find source page name for success message
-          const sourcePage = pages.find(p => p.id === cloneFromPageId);
-          toast({ 
-            title: "✅ Success!", 
-            description: `Page "${newPageName}" created with ${newConfigs.length} configuration(s) cloned from "${sourcePage?.name || 'source page'}"` 
-          });
-        } else {
-          toast({ title: "✅ Success!", description: `Page "${newPageName}" created (no configurations to clone)` });
-        }
-      } else {
-        toast({ title: "✅ Success!", description: `Page "${newPageName}" created successfully` });
-      }
+      toast({ title: "✅ Success!", description: `Page "${newPageName}" created successfully` });
 
       setShowAddDialog(false);
       setNewPageName("");
       setNewPageId("");
-      setNewPageToken("");
-      setShowToken(false);
-      setConfigOption("standard");
-      setCloneFromPageId("");
+      setNewWebhookToken("");
+      setNewAppTokens(Array(20).fill(""));
+      setShowWebhookToken(false);
+      setShowAppTokens(Array(20).fill(false));
       await refreshPages();
     } catch (error: any) {
       console.error('Error adding page:', error);
@@ -207,8 +168,12 @@ export default function Settings() {
   const handleEditPage = (page: Page) => {
     setEditingPage(page);
     setEditPageName(page.name);
-    setEditPageToken(page.access_token || "");
-    setShowEditToken(false);
+    setEditWebhookToken((page as any).access_token_webhook || "");
+    // Load all 20 app tokens
+    const tokens = Array(20).fill("").map((_, i) => (page as any)[`access_token_${i + 1}`] || "");
+    setEditAppTokens(tokens);
+    setShowEditWebhookToken(false);
+    setShowEditAppTokens(Array(20).fill(false));
     setShowEditDialog(true);
   };
 
@@ -217,12 +182,20 @@ export default function Settings() {
 
     setSavingEdit(true);
     try {
+      // Build update data with all tokens
+      const updateData: Record<string, any> = {
+        name: editPageName.trim(),
+        access_token_webhook: editWebhookToken.trim() || null,
+      };
+
+      // Add all 20 app tokens
+      editAppTokens.forEach((token, index) => {
+        updateData[`access_token_${index + 1}`] = token.trim() || null;
+      });
+
       const { error } = await supabase
         .from('pages')
-        .update({
-          name: editPageName.trim(),
-          access_token: editPageToken.trim() || null,
-        })
+        .update(updateData)
         .eq('id', editingPage.id);
 
       if (error) throw error;
@@ -556,14 +529,14 @@ export default function Settings() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Key className="h-4 w-4" />
-                Page Access Token
+                Webhook Token
               </Label>
               <div className="relative">
                 <Input
-                  type={showToken ? "text" : "password"}
+                  type={showWebhookToken ? "text" : "password"}
                   placeholder="EAAxxxxx..."
-                  value={newPageToken}
-                  onChange={(e) => setNewPageToken(e.target.value)}
+                  value={newWebhookToken}
+                  onChange={(e) => setNewWebhookToken(e.target.value)}
                   className="bg-white/5 border-white/10 pr-10 font-mono text-sm"
                 />
                 <Button
@@ -571,54 +544,61 @@ export default function Settings() {
                   variant="ghost"
                   size="icon"
                   className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                  onClick={() => setShowToken(!showToken)}
+                  onClick={() => setShowWebhookToken(!showWebhookToken)}
                 >
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showWebhookToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Get this from Facebook Developer Portal → Your App → Page Access Token
+                Token for webhook verification
               </p>
             </div>
+
+            {/* 20 App Tokens in a scrollable area */}
             <div className="space-y-2">
-              <Label>Configuration</Label>
-              <Select value={configOption} onValueChange={(v) => setConfigOption(v as "standard" | "clone")}>
-                <SelectTrigger className="bg-white/5 border-white/10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="glass border-white/10">
-                  <SelectItem value="standard">Create standard configuration</SelectItem>
-                  <SelectItem value="clone">Clone from existing page</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {configOption === "clone" && pages.length > 0 && (
-              <div className="space-y-2">
-                <Label>Clone from</Label>
-                <Select value={cloneFromPageId} onValueChange={setCloneFromPageId}>
-                  <SelectTrigger className="bg-white/5 border-white/10">
-                    <SelectValue placeholder="Select a page to clone" />
-                  </SelectTrigger>
-                  <SelectContent className="glass border-white/10">
-                    {pages.map((page) => (
-                      <SelectItem key={page.id} value={page.id}>
-                        {page.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  This will copy all message configurations including welcome messages, responses, sequences, broadcasts, and their settings.
-                </p>
-              </div>
-            )}
-            
-            {configOption === "clone" && pages.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No existing pages to clone from. A standard configuration will be created.
+              <Label className="flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                App Tokens (20)
+              </Label>
+              <ScrollArea className="h-48 rounded-md border border-white/10 p-3">
+                <div className="space-y-3">
+                  {newAppTokens.map((token, index) => (
+                    <div key={index} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Token {index + 1}</Label>
+                      <div className="relative">
+                        <Input
+                          type={showAppTokens[index] ? "text" : "password"}
+                          placeholder={`Token ${index + 1}...`}
+                          value={token}
+                          onChange={(e) => {
+                            const updated = [...newAppTokens];
+                            updated[index] = e.target.value;
+                            setNewAppTokens(updated);
+                          }}
+                          className="bg-white/5 border-white/10 pr-10 font-mono text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                          onClick={() => {
+                            const updated = [...showAppTokens];
+                            updated[index] = !updated[index];
+                            setShowAppTokens(updated);
+                          }}
+                        >
+                          {showAppTokens[index] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              <p className="text-xs text-muted-foreground">
+                Get these from Facebook Developer Portal → Your App → Page Access Tokens
               </p>
-            )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDialog(false)} className="border-white/10">
@@ -657,11 +637,11 @@ export default function Settings() {
 
       {/* Edit Page Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="glass border-white/10">
+        <DialogContent className="glass border-white/10 max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Page</DialogTitle>
             <DialogDescription>
-              Update page name and access token
+              Update page name and access tokens
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -688,14 +668,14 @@ export default function Settings() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Key className="h-4 w-4" />
-                Page Access Token
+                Webhook Token
               </Label>
               <div className="relative">
                 <Input
-                  type={showEditToken ? "text" : "password"}
+                  type={showEditWebhookToken ? "text" : "password"}
                   placeholder="EAAxxxxx..."
-                  value={editPageToken}
-                  onChange={(e) => setEditPageToken(e.target.value)}
+                  value={editWebhookToken}
+                  onChange={(e) => setEditWebhookToken(e.target.value)}
                   className="bg-white/5 border-white/10 pr-10 font-mono text-sm"
                 />
                 <Button
@@ -703,11 +683,57 @@ export default function Settings() {
                   variant="ghost"
                   size="icon"
                   className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                  onClick={() => setShowEditToken(!showEditToken)}
+                  onClick={() => setShowEditWebhookToken(!showEditWebhookToken)}
                 >
-                  {showEditToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showEditWebhookToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Token for webhook verification
+              </p>
+            </div>
+
+            {/* 20 App Tokens in a scrollable area */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                App Tokens (20)
+              </Label>
+              <ScrollArea className="h-48 rounded-md border border-white/10 p-3">
+                <div className="space-y-3">
+                  {editAppTokens.map((token, index) => (
+                    <div key={index} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Token {index + 1}</Label>
+                      <div className="relative">
+                        <Input
+                          type={showEditAppTokens[index] ? "text" : "password"}
+                          placeholder={`Token ${index + 1}...`}
+                          value={token}
+                          onChange={(e) => {
+                            const updated = [...editAppTokens];
+                            updated[index] = e.target.value;
+                            setEditAppTokens(updated);
+                          }}
+                          className="bg-white/5 border-white/10 pr-10 font-mono text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                          onClick={() => {
+                            const updated = [...showEditAppTokens];
+                            updated[index] = !updated[index];
+                            setShowEditAppTokens(updated);
+                          }}
+                        >
+                          {showEditAppTokens[index] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
               <p className="text-xs text-muted-foreground">
                 Leave empty to keep the existing token, or paste a new one to update
               </p>

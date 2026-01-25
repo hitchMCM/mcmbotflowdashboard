@@ -5,7 +5,7 @@
 # Proxy API requests to PostgREST server (avoids CORS and mixed content issues)
 [[redirects]]
   from = "/api/*"
-  to = "http://109.176.199.57:3002/:splat"
+  to = "http://207.180.232.14:3002/:splat"
   status = 200
   force = true
 

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { 
-  Users, Send, CheckCheck, Eye, MousePointer, TrendingUp, 
+  Users, Send, MousePointer, TrendingUp, 
   Loader2, RefreshCw, BarChart3, MessageCircle, Zap, Radio,
   Calendar, AlertCircle, Settings, Plus
 } from "lucide-react";
@@ -139,7 +139,7 @@ export default function Dashboard() {
 
         {/* Main Stats Grid */}
         <section aria-label="Key metrics">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               icon={Users}
               value={stats.totalSubscribers}
@@ -157,28 +157,12 @@ export default function Dashboard() {
               delay={0.05}
             />
             <StatCard
-              icon={CheckCheck}
-              value={stats.totalMessagesDelivered}
-              label="Delivered"
-              loading={loading}
-              color="green"
-              delay={0.1}
-            />
-            <StatCard
-              icon={Eye}
-              value={stats.totalMessagesRead}
-              label="Read"
-              loading={loading}
-              color="purple"
-              delay={0.15}
-            />
-            <StatCard
               icon={MousePointer}
               value={stats.totalButtonClicks}
               label="Clicks"
               loading={loading}
               color="orange"
-              delay={0.2}
+              delay={0.1}
             />
             <StatCard
               icon={TrendingUp}
@@ -186,7 +170,7 @@ export default function Dashboard() {
               label="Today"
               loading={loading}
               color="pink"
-              delay={0.25}
+              delay={0.15}
             />
           </div>
         </section>
@@ -501,46 +485,6 @@ export default function Dashboard() {
                       initial={{ width: 0 }}
                       animate={{ width: '100%' }}
                       transition={{ duration: 1, delay: 0.6 }}
-                    />
-                  </div>
-                </div>
-                
-                {/* Delivered */}
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm flex items-center gap-2">
-                      <CheckCheck className="h-4 w-4 text-green-400" aria-hidden="true" /> Delivered
-                    </span>
-                    <span className="text-sm font-bold text-green-400">
-                      {loading ? <Skeleton className="h-4 w-20 inline-block" /> : `${stats.totalMessagesDelivered} (${stats.deliveryRate}%)`}
-                    </span>
-                  </div>
-                  <div className="h-8 bg-white/5 rounded-lg overflow-hidden">
-                    <motion.div 
-                      className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-lg"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.max(stats.deliveryRate, 5)}%` }}
-                      transition={{ duration: 1, delay: 0.8 }}
-                    />
-                  </div>
-                </div>
-
-                {/* Read */}
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm flex items-center gap-2">
-                      <Eye className="h-4 w-4 text-purple-400" aria-hidden="true" /> Read
-                    </span>
-                    <span className="text-sm font-bold text-purple-400">
-                      {loading ? <Skeleton className="h-4 w-20 inline-block" /> : `${stats.totalMessagesRead} (${stats.readRate}%)`}
-                    </span>
-                  </div>
-                  <div className="h-8 bg-white/5 rounded-lg overflow-hidden">
-                    <motion.div 
-                      className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-lg"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.max(stats.readRate, 5)}%` }}
-                      transition={{ duration: 1, delay: 1 }}
                     />
                   </div>
                 </div>
