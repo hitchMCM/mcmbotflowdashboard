@@ -41,7 +41,7 @@ export function PageSelector() {
     return (
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5">
         <Avatar className="h-6 w-6">
-          <AvatarImage src={page.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${page.facebook_page_id}`} />
+          <AvatarImage src={`https://graph.facebook.com/${page.facebook_page_id}/picture?type=large`} />
           <AvatarFallback>{page.name?.[0] || 'P'}</AvatarFallback>
         </Avatar>
         <span className="text-sm font-medium">{page.name}</span>
@@ -66,7 +66,7 @@ export function PageSelector() {
             {currentPage ? (
               <>
                 <Avatar className="h-5 w-5">
-                  <AvatarImage src={currentPage.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${currentPage.facebook_page_id}`} />
+                  <AvatarImage src={`https://graph.facebook.com/${currentPage.facebook_page_id}/picture?type=large`} />
                   <AvatarFallback>{currentPage.name?.[0] || 'P'}</AvatarFallback>
                 </Avatar>
                 <span className="truncate max-w-[120px]">{currentPage.name}</span>
@@ -107,7 +107,7 @@ export function PageSelector() {
                 )}
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={page.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${page.facebook_page_id}`} />
+                  <AvatarImage src={`https://graph.facebook.com/${page.facebook_page_id}/picture?type=large`} />
                   <AvatarFallback>{page.name?.[0] || 'P'}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">

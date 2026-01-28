@@ -86,7 +86,7 @@ export function Sidebar() {
           <DropdownMenuTrigger className="w-full">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={currentPage?.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${currentPage?.name}`} />
+                <AvatarImage src={currentPage?.facebook_page_id ? `https://graph.facebook.com/${currentPage.facebook_page_id}/picture?type=large` : undefined} />
                 <AvatarFallback>{currentPage?.name?.[0] || 'P'}</AvatarFallback>
               </Avatar>
               <span className="flex-1 text-left text-sm font-medium truncate">{currentPage?.name || 'Select Page'}</span>
@@ -101,7 +101,7 @@ export function Sidebar() {
                 className="cursor-pointer focus:bg-white/10"
               >
                 <Avatar className="h-6 w-6 mr-2">
-                  <AvatarImage src={page.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${page.name}`} />
+                  <AvatarImage src={`https://graph.facebook.com/${page.facebook_page_id}/picture?type=large`} />
                   <AvatarFallback>{page.name[0]}</AvatarFallback>
                 </Avatar>
                 <span>{page.name}</span>

@@ -72,6 +72,7 @@ export default function Settings() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newPageName, setNewPageName] = useState("");
   const [newPageId, setNewPageId] = useState("");
+  const [newPageLogo, setNewPageLogo] = useState("");
   const [newWebhookToken, setNewWebhookToken] = useState("");
   const [newAppTokens, setNewAppTokens] = useState<string[]>(Array(20).fill(""));
   const [showWebhookToken, setShowWebhookToken] = useState(false);
@@ -82,6 +83,7 @@ export default function Settings() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingPage, setEditingPage] = useState<Page | null>(null);
   const [editPageName, setEditPageName] = useState("");
+  const [editPageLogo, setEditPageLogo] = useState("");
   const [editWebhookToken, setEditWebhookToken] = useState("");
   const [editAppTokens, setEditAppTokens] = useState<string[]>(Array(20).fill(""));
   const [showEditWebhookToken, setShowEditWebhookToken] = useState(false);
@@ -95,6 +97,31 @@ export default function Settings() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [pageToDelete, setPageToDelete] = useState<Page | null>(null);
   const [deletingPage, setDeletingPage] = useState(false);
+
+  // Extract page ID from Facebook URL or return as-is if already an ID
+  const extractPageId = (input: string): string => {
+    const trimmed = input.trim();
+    
+    // If it looks like a URL
+    if (trimmed.includes('facebook.com')) {
+      // Match profile.php?id=123456
+      const idMatch = trimmed.match(/[?&]id=(\d+)/);
+      if (idMatch) return idMatch[1];
+      
+      // Match facebook.com/pagename or facebook.com/pages/name/123456
+      const pathMatch = trimmed.match(/facebook\.com\/(?:pages\/[^\/]+\/)?([^\/\?]+)/);
+      if (pathMatch) {
+        const segment = pathMatch[1];
+        // If it's a numeric ID, return it
+        if (/^\d+$/.test(segment)) return segment;
+        // Otherwise it's a username/pagename - return as-is (can be used in Graph API)
+        return segment;
+      }
+    }
+    
+    // Return as-is (assumed to be a page ID or username)
+    return trimmed;
+  };
 
   const handleSaveGeneralSettings = async () => {
     const success = await saveSettingsToDatabase();
@@ -124,6 +151,7 @@ export default function Settings() {
       const pageData: Record<string, any> = {
         name: newPageName.trim(),
         facebook_page_id: newPageId.trim(),
+        avatar_url: newPageLogo.trim() || null,
         access_token_webhook: newWebhookToken.trim() || null,
         user_id: userId,
         is_active: true
@@ -151,6 +179,7 @@ export default function Settings() {
       setShowAddDialog(false);
       setNewPageName("");
       setNewPageId("");
+      setNewPageLogo("");
       setNewWebhookToken("");
       setNewAppTokens(Array(20).fill(""));
       setShowWebhookToken(false);
@@ -168,6 +197,7 @@ export default function Settings() {
   const handleEditPage = (page: Page) => {
     setEditingPage(page);
     setEditPageName(page.name);
+    setEditPageLogo(page.avatar_url || "");
     setEditWebhookToken((page as any).access_token_webhook || "");
     // Load all 20 app tokens
     const tokens = Array(20).fill("").map((_, i) => (page as any)[`access_token_${i + 1}`] || "");
@@ -185,6 +215,7 @@ export default function Settings() {
       // Build update data with all tokens
       const updateData: Record<string, any> = {
         name: editPageName.trim(),
+        avatar_url: editPageLogo.trim() || null,
         access_token_webhook: editWebhookToken.trim() || null,
       };
 
@@ -519,11 +550,30 @@ export default function Settings() {
               <Input
                 placeholder="123456789012345"
                 value={newPageId}
-                onChange={(e) => setNewPageId(e.target.value)}
+                onChange={(e) => {
+                  const pageId = e.target.value;
+                  setNewPageId(pageId);
+                  // Auto-generate logo URL from Facebook Graph API
+                  if (pageId.trim()) {
+                    setNewPageLogo(`https://graph.facebook.com/${pageId.trim()}/picture?type=large`);
+                  }
+                }}
                 className="bg-white/5 border-white/10"
               />
               <p className="text-xs text-muted-foreground">
                 Find this in your Facebook Page settings → About → Page ID
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Logo URL</Label>
+              <Input
+                placeholder="https://example.com/logo.png"
+                value={newPageLogo}
+                onChange={(e) => setNewPageLogo(e.target.value)}
+                className="bg-white/5 border-white/10"
+              />
+              <p className="text-xs text-muted-foreground">
+                URL of the page logo/avatar image
               </p>
             </div>
             <div className="space-y-2">
@@ -663,6 +713,18 @@ export default function Settings() {
               />
               <p className="text-xs text-muted-foreground">
                 Page ID cannot be changed
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Logo URL</Label>
+              <Input
+                placeholder="https://example.com/logo.png"
+                value={editPageLogo}
+                onChange={(e) => setEditPageLogo(e.target.value)}
+                className="bg-white/5 border-white/10"
+              />
+              <p className="text-xs text-muted-foreground">
+                URL of the page logo/avatar image
               </p>
             </div>
             <div className="space-y-2">
