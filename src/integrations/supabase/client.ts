@@ -31,7 +31,8 @@ class PostgrestQueryBuilder implements PromiseLike<QueryResult> {
   }
 
   select(fields: string = '*', options?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean }): PostgrestQueryBuilder {
-    this.selectFields = fields;
+    // Remove spaces after commas - PostgREST doesn't accept spaces in select
+    this.selectFields = fields.replace(/,\s+/g, ',');
     if (options?.count) {
       this.countMode = options.count;
     }
@@ -193,12 +194,20 @@ class PostgrestQueryBuilder implements PromiseLike<QueryResult> {
       if (this.insertData) {
         options.method = 'POST';
         options.body = JSON.stringify(this.insertData);
+        // Add select fields to URL if specified
+        if (this.selectFields !== '*') {
+          url += `?select=${encodeURIComponent(this.selectFields)}`;
+        }
       }
       // UPDATE
       else if (this.updateData) {
-        url += `?${this.params.toString()}`;
+        const paramsStr = this.params.toString();
+        // Always include select in URL for UPDATE to get returned data
+        url += `?select=${encodeURIComponent(this.selectFields)}${paramsStr ? '&' + paramsStr : ''}`;
         options.method = 'PATCH';
         options.body = JSON.stringify(this.updateData);
+        console.log('[client.ts] UPDATE request:', url);
+        console.log('[client.ts] UPDATE body:', options.body);
       }
       // DELETE
       else if (this.deleteFlag) {

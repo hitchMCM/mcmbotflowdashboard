@@ -174,17 +174,35 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
 
   const updateMessage = async (id: string, updates: Partial<MessageInsert>): Promise<boolean> => {
     try {
-      const { error: updateError } = await supabase
+      console.log('[useMessages] ========== UPDATE START ==========');
+      console.log('[useMessages] Updating message ID:', id);
+      console.log('[useMessages] Update data:', JSON.stringify(updates, null, 2));
+      
+      const { data, error: updateError } = await supabase
         .from('messages')
         .update(updates)
-        .eq('id', id);
+        .eq('id', id)
+        .select();
       
-      if (updateError) throw updateError;
+      console.log('[useMessages] Response - data:', data);
+      console.log('[useMessages] Response - error:', updateError);
       
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } as Message : m));
+      if (updateError) {
+        console.error('[useMessages] Update error:', updateError);
+        throw updateError;
+      }
+      
+      // Check if any row was actually updated
+      if (!data || data.length === 0) {
+        console.error('[useMessages] No rows updated - data is empty or null');
+        return false;
+      }
+      
+      console.log('[useMessages] Update successful, updated row:', data[0]);
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, ...data[0] } as Message : m));
       return true;
     } catch (err) {
-      console.error('Error updating message:', err);
+      console.error('[useMessages] Exception caught:', err);
       return false;
     }
   };

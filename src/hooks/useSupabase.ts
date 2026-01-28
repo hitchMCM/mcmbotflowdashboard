@@ -883,7 +883,7 @@ export function useRecentActivity(pageId?: string | null, limit: number = 15) {
       // Build queries with page filtering - only use subscribers and messages tables
       let subscribersQuery = supabase
         .from('subscribers')
-        .select('id, full_name, first_name, created_at, page_id')
+        .select('id,name_complet,first_name,created_at,page_id')
         .order('created_at', { ascending: false })
         .limit(15);
       
@@ -910,7 +910,7 @@ export function useRecentActivity(pageId?: string | null, limit: number = 15) {
 
       // Process subscribers
       (subscribersRes.data || []).forEach(sub => {
-        const name = sub.full_name || sub.first_name || 'Someone';
+        const name = sub.name_complet || sub.first_name || 'Someone';
         allActivities.push({
           id: `sub-${sub.id}`,
           type: 'subscriber',

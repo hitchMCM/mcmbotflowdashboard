@@ -153,7 +153,7 @@ export default function Analytics() {
         // Get total count of subscribers
         supabase.from('subscribers').select('id', { count: 'exact', head: true }),
         // Get only recent 500 subscribers for display
-        supabase.from('subscribers').select('id, full_name, avatar_url, subscribed_at, is_active, page_id')
+        supabase.from('subscribers').select('id,name_complet,subscribed_at,is_active,page_id')
           .order('subscribed_at', { ascending: false })
           .limit(500),
         // Pages table has aggregated stats: total_sent, total_delivered, total_read, total_clicks
@@ -377,8 +377,8 @@ export default function Analytics() {
         .slice(0, 10)
         .map(s => ({
           id: s.id,
-          name: s.full_name || 'Anonymous',
-          avatar: s.avatar_url,
+          name: s.name_complet || 'Anonymous',
+          avatar: null,
           date: new Date(s.subscribed_at).toLocaleDateString('en-US', { 
             month: 'short', 
             day: 'numeric',

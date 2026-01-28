@@ -155,17 +155,35 @@ export default function Sequences() {
   };
 
   const handleSave = async () => {
-    if (!selectedMessage) return;
+    console.log('[Sequences] handleSave called');
+    console.log('[Sequences] selectedMessage:', selectedMessage);
+    console.log('[Sequences] editName:', editName);
+    console.log('[Sequences] messageContent:', messageContent);
+    
+    if (!selectedMessage) {
+      console.error('[Sequences] No selectedMessage - aborting save');
+      toast({ title: "❌ Error", description: "No message selected.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       // Convert MessageContent to legacy format for database
       const legacyData = convertMessageContentToLegacy(messageContent);
       
-      await updateMessage(selectedMessage.id, {
+      console.log('[Sequences] Saving message:', selectedMessage.id);
+      console.log('[Sequences] Data to save:', { name: editName, is_active: isEnabled, ...legacyData });
+      
+      const success = await updateMessage(selectedMessage.id, {
         name: editName,
         is_active: isEnabled,
         ...legacyData
       });
+      
+      if (!success) {
+        console.error('[Sequences] Update returned false');
+        toast({ title: "❌ Error", description: "Failed to save message. Check console for details.", variant: "destructive" });
+        return;
+      }
       
       // Update original data reference after successful save
       originalDataRef.current = JSON.stringify({
@@ -178,6 +196,7 @@ export default function Sequences() {
       toast({ title: "✅ Saved!", description: "Sequence message updated." });
       await refetch();
     } catch (error) {
+      console.error('[Sequences] Save error:', error);
       toast({ title: "❌ Error", description: "Unable to save.", variant: "destructive" });
     } finally {
       setSaving(false);

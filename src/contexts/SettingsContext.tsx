@@ -95,7 +95,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('theme, language, timezone')
+        .select('theme,language,timezone')
         .eq('id', userId)
         .single();
 
