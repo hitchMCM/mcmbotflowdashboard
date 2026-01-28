@@ -391,20 +391,20 @@ export default function Configuration() {
         .delete()
         .eq('page_id', currentPage.id);
 
-      // Clone configs to current page
+      // Clone configs to current page - use spread operator to create new arrays (deep copy)
       const newConfigs = sourceConfigs.map(config => ({
         page_id: currentPage.id,
         category: config.category,
         name: config.name,
-        selected_message_ids: config.selected_message_ids,
+        selected_message_ids: [...(config.selected_message_ids || [])],
         selection_mode: config.selection_mode,
         fixed_message_id: config.fixed_message_id,
         messages_count: config.messages_count,
-        delay_hours: config.delay_hours,
+        delay_hours: [...(config.delay_hours || [])],
         scheduled_time: config.scheduled_time,
-        scheduled_times: config.scheduled_times,
+        scheduled_times: config.scheduled_times ? [...config.scheduled_times] : null,
         scheduled_date: config.scheduled_date,
-        trigger_keywords: config.trigger_keywords,
+        trigger_keywords: [...(config.trigger_keywords || [])],
         is_enabled: config.is_enabled
       }));
 
