@@ -72,7 +72,6 @@ export default function Settings() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newPageName, setNewPageName] = useState("");
   const [newPageId, setNewPageId] = useState("");
-  const [newPageLogo, setNewPageLogo] = useState("");
   const [newWebhookToken, setNewWebhookToken] = useState("");
   const [newAppTokens, setNewAppTokens] = useState<string[]>(Array(20).fill(""));
   const [showWebhookToken, setShowWebhookToken] = useState(false);
@@ -83,7 +82,6 @@ export default function Settings() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingPage, setEditingPage] = useState<Page | null>(null);
   const [editPageName, setEditPageName] = useState("");
-  const [editPageLogo, setEditPageLogo] = useState("");
   const [editWebhookToken, setEditWebhookToken] = useState("");
   const [editAppTokens, setEditAppTokens] = useState<string[]>(Array(20).fill(""));
   const [showEditWebhookToken, setShowEditWebhookToken] = useState(false);
@@ -151,7 +149,6 @@ export default function Settings() {
       const pageData: Record<string, any> = {
         name: newPageName.trim(),
         facebook_page_id: newPageId.trim(),
-        avatar_url: newPageLogo.trim() || null,
         access_token_webhook: newWebhookToken.trim() || null,
         user_id: userId,
         is_active: true
@@ -179,7 +176,6 @@ export default function Settings() {
       setShowAddDialog(false);
       setNewPageName("");
       setNewPageId("");
-      setNewPageLogo("");
       setNewWebhookToken("");
       setNewAppTokens(Array(20).fill(""));
       setShowWebhookToken(false);
@@ -197,7 +193,6 @@ export default function Settings() {
   const handleEditPage = (page: Page) => {
     setEditingPage(page);
     setEditPageName(page.name);
-    setEditPageLogo(page.avatar_url || "");
     setEditWebhookToken((page as any).access_token_webhook || "");
     // Load all 20 app tokens
     const tokens = Array(20).fill("").map((_, i) => (page as any)[`access_token_${i + 1}`] || "");
@@ -215,7 +210,6 @@ export default function Settings() {
       // Build update data with all tokens
       const updateData: Record<string, any> = {
         name: editPageName.trim(),
-        avatar_url: editPageLogo.trim() || null,
         access_token_webhook: editWebhookToken.trim() || null,
       };
 
@@ -550,30 +544,11 @@ export default function Settings() {
               <Input
                 placeholder="123456789012345"
                 value={newPageId}
-                onChange={(e) => {
-                  const pageId = e.target.value;
-                  setNewPageId(pageId);
-                  // Auto-generate logo URL from Facebook Graph API
-                  if (pageId.trim()) {
-                    setNewPageLogo(`https://graph.facebook.com/${pageId.trim()}/picture?type=large`);
-                  }
-                }}
+                onChange={(e) => setNewPageId(e.target.value)}
                 className="bg-white/5 border-white/10"
               />
               <p className="text-xs text-muted-foreground">
-                Find this in your Facebook Page settings → About → Page ID
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Logo URL</Label>
-              <Input
-                placeholder="https://example.com/logo.png"
-                value={newPageLogo}
-                onChange={(e) => setNewPageLogo(e.target.value)}
-                className="bg-white/5 border-white/10"
-              />
-              <p className="text-xs text-muted-foreground">
-                URL of the page logo/avatar image
+                Find this in your Facebook Page settings → About → Page ID. The logo will be fetched automatically from Facebook.
               </p>
             </div>
             <div className="space-y-2">
@@ -712,19 +687,7 @@ export default function Settings() {
                 className="bg-white/5 border-white/10 opacity-50"
               />
               <p className="text-xs text-muted-foreground">
-                Page ID cannot be changed
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Logo URL</Label>
-              <Input
-                placeholder="https://example.com/logo.png"
-                value={editPageLogo}
-                onChange={(e) => setEditPageLogo(e.target.value)}
-                className="bg-white/5 border-white/10"
-              />
-              <p className="text-xs text-muted-foreground">
-                URL of the page logo/avatar image
+                Page ID cannot be changed. Logo is fetched automatically from Facebook.
               </p>
             </div>
             <div className="space-y-2">

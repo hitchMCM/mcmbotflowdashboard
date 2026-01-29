@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { TagAutocompleteTextarea, TagAutocompleteInput } from "@/components/ui/TagAutocompleteTextarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -305,8 +306,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Label>Message</Label>
             <CharCount current={value.text?.length || 0} max={FB_LIMITS.TEXT_MESSAGE} />
           </div>
-          <Textarea
-            placeholder="Entrez votre message texte..."
+          <TagAutocompleteTextarea
+            placeholder="Entrez votre message texte... (tapez {{ pour les tags de personnalisation)"
             value={value.text || ""}
             onChange={(e) => updateText(e.target.value)}
             className={cn("min-h-32", (value.text?.length || 0) > FB_LIMITS.TEXT_MESSAGE && "border-destructive")}
@@ -357,8 +358,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               <Label>Titre</Label>
               <CharCount current={currentElement.title?.length || 0} max={FB_LIMITS.TITLE} />
             </div>
-            <Input
-              placeholder="Titre de la carte"
+            <TagAutocompleteInput
+              placeholder="Titre de la carte (tapez {{ pour les tags)"
               value={currentElement.title}
               onChange={(e) => updateElement(0, { title: e.target.value })}
               maxLength={FB_LIMITS.TITLE}
@@ -371,8 +372,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               <Label>Sous-titre / Description</Label>
               <CharCount current={currentElement.subtitle?.length || 0} max={FB_LIMITS.SUBTITLE} />
             </div>
-            <Textarea
-              placeholder="Description de la carte..."
+            <TagAutocompleteTextarea
+              placeholder="Description de la carte... (tapez {{ pour les tags)"
               value={currentElement.subtitle || ""}
               onChange={(e) => updateElement(0, { subtitle: e.target.value })}
               className={cn("min-h-20", (currentElement.subtitle?.length || 0) > FB_LIMITS.SUBTITLE && "border-destructive")}
@@ -398,8 +399,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               <Label>Texte du message</Label>
               <CharCount current={currentElement.title?.length || 0} max={FB_LIMITS.BUTTON_TEMPLATE_TEXT} />
             </div>
-            <Textarea
-              placeholder="Texte qui accompagne les boutons..."
+            <TagAutocompleteTextarea
+              placeholder="Texte qui accompagne les boutons... (tapez {{ pour les tags)"
               value={currentElement.title}
               onChange={(e) => updateElement(0, { title: e.target.value })}
               className={cn("min-h-20", (currentElement.title?.length || 0) > FB_LIMITS.BUTTON_TEMPLATE_TEXT && "border-destructive")}
@@ -614,8 +615,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
                     <Label>Titre</Label>
                     <CharCount current={currentElement.title?.length || 0} max={FB_LIMITS.TITLE} />
                   </div>
-                  <Input
-                    placeholder="Titre de la carte"
+                  <TagAutocompleteInput
+                    placeholder="Titre de la carte (tapez {{ pour les tags)"
                     value={currentElement.title}
                     onChange={(e) => updateElement(activeCarouselIndex, { title: e.target.value })}
                     maxLength={FB_LIMITS.TITLE}
@@ -628,8 +629,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
                     <Label>Sous-titre</Label>
                     <CharCount current={currentElement.subtitle?.length || 0} max={FB_LIMITS.SUBTITLE} />
                   </div>
-                  <Textarea
-                    placeholder="Description..."
+                  <TagAutocompleteTextarea
+                    placeholder="Description... (tapez {{ pour les tags)"
                     value={currentElement.subtitle || ""}
                     onChange={(e) => updateElement(activeCarouselIndex, { subtitle: e.target.value })}
                     className={cn("min-h-16", (currentElement.subtitle?.length || 0) > FB_LIMITS.SUBTITLE && "border-destructive")}
@@ -657,8 +658,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               <Label>Message</Label>
               <CharCount current={value.text?.length || 0} max={FB_LIMITS.TEXT_MESSAGE} />
             </div>
-            <Textarea
-              placeholder="Choisissez une option..."
+            <TagAutocompleteTextarea
+              placeholder="Choisissez une option... (tapez {{ pour les tags)"
               value={value.text || ""}
               onChange={(e) => updateText(e.target.value)}
               className={cn("min-h-20", (value.text?.length || 0) > FB_LIMITS.TEXT_MESSAGE && "border-destructive")}
