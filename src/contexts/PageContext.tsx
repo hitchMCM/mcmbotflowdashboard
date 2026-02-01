@@ -66,13 +66,16 @@ export function PageProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Timeout de 5 secondes max
+    // Timeout de 15 secondes max (increased from 5)
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout')), 5000)
+      setTimeout(() => reject(new Error('Timeout after 15 seconds')), 15000)
     );
     
     try {
       // Load only pages belonging to the current user
+      console.log('[PageContext] Starting fetch for user:', userId);
+      const startTime = Date.now();
+      
       const fetchPromise = supabase
         .from('pages')
         .select('*')
@@ -80,6 +83,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
         .order('name');
       
       const result = await Promise.race([fetchPromise, timeoutPromise]) as any;
+      console.log('[PageContext] Fetch completed in', Date.now() - startTime, 'ms');
       const { data, error } = result;
 
       console.log('[PageContext] Supabase response - data:', data);
@@ -134,10 +138,11 @@ export function PageProvider({ children }: { children: ReactNode }) {
       // Default to first page
       console.log('[PageContext] Using first page:', loadedPages[0].name);
       setCurrentPage(loadedPages[0]);
-    } catch (error) {
-      console.error('Error loading pages:', error);
+    } catch (error: any) {
+      console.error('[PageContext] Error loading pages:', error?.message || error);
       // Show empty state on any error (including timeout)
       console.log('[PageContext] Exception caught (timeout or error), showing empty state');
+      console.log('[PageContext] Error details:', JSON.stringify(error, null, 2));
       setPages([]);
       setCurrentPage(null);
       setLoading(false);

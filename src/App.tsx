@@ -16,6 +16,7 @@ import Settings from "./pages/Settings";
 import Configuration from "./pages/Configuration";
 import Welcome from "./pages/Welcome";
 import Responses from "./pages/Responses";
+import CommentReply from "./pages/CommentReply";
 import Sequences from "./pages/Sequences";
 import Broadcasts from "./pages/Broadcasts";
 import About from "./pages/About";
@@ -26,6 +27,7 @@ import Terms from "./pages/Terms";
 import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
 import Register from "./pages/Register";
+import Admin from "./pages/Admin";
 
 console.log('[App] Loading application...');
 
@@ -65,11 +67,13 @@ const App = () => (
             <Route path="/flows" element={<ProtectedWithPage><Flows /></ProtectedWithPage>} />
             <Route path="/analytics" element={<ProtectedWithPage><Analytics /></ProtectedWithPage>} />
             <Route path="/welcome" element={<ProtectedWithPage><Welcome /></ProtectedWithPage>} />
+            <Route path="/comment-reply" element={<ProtectedWithPage><CommentReply /></ProtectedWithPage>} />
             <Route path="/responses" element={<ProtectedWithPage><Responses /></ProtectedWithPage>} />
             <Route path="/sequences" element={<ProtectedWithPage><Sequences /></ProtectedWithPage>} />
             <Route path="/broadcasts" element={<ProtectedWithPage><Broadcasts /></ProtectedWithPage>} />
             <Route path="/configuration" element={<ProtectedWithPage><Configuration /></ProtectedWithPage>} />
             <Route path="/settings" element={<ProtectedWithPage><Settings /></ProtectedWithPage>} />
+            <Route path="/admin" element={<ProtectedWithPage><Admin /></ProtectedWithPage>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

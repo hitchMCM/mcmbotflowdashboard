@@ -21,7 +21,8 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Copy
+  Copy,
+  MessageCircle
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { usePage } from "@/contexts/PageContext";
@@ -55,14 +56,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Only 4 categories for trigger configuration
-const TRIGGER_CATEGORIES: MessageCategory[] = ['welcome', 'response', 'sequence', 'broadcast'];
+// 5 categories for trigger configuration
+const TRIGGER_CATEGORIES: MessageCategory[] = ['welcome', 'response', 'comment_reply', 'sequence', 'broadcast'];
 
 const CATEGORY_ICONS: Record<MessageCategory, React.ElementType> = {
   welcome: MessageSquare,
   response: Zap,
   sequence: Settings2,
   broadcast: Radio,
+  comment_reply: MessageCircle,
 };
 
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
@@ -113,8 +115,10 @@ export default function Configuration() {
   const responseMessages = useMessages('response');
   const sequenceMessages = useMessages('sequence');
   const broadcastMessages = useMessages('broadcast');
+  const commentReplyMessages = useMessages('comment_reply');
   
   // Load page configs - pass the pageId
+  console.log('[Configuration] Current page for usePageConfigs:', currentPage?.id, currentPage?.name);
   const { 
     configs, 
     loading: configsLoading, 
@@ -128,6 +132,7 @@ export default function Configuration() {
   const [triggerConfigs, setTriggerConfigs] = useState<Record<MessageCategory, TriggerConfig>>({
     welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
     response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
+    comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
     sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [1440], scheduled_time: null, selected_message_ids: [] },
     broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
   });
@@ -137,6 +142,7 @@ export default function Configuration() {
     switch (category) {
       case 'welcome': return welcomeMessages.messages;
       case 'response': return responseMessages.messages;
+      case 'comment_reply': return commentReplyMessages.messages;
       case 'sequence': return sequenceMessages.messages;
       case 'broadcast': return broadcastMessages.messages;
       default: return [];
@@ -145,7 +151,11 @@ export default function Configuration() {
 
   // Load configs into local state when they arrive
   useEffect(() => {
+    console.log('[Configuration] useEffect triggered - configs:', configs.length, 'loading:', configsLoading);
+    console.log('[Configuration] Current page in effect:', currentPage?.id, currentPage?.name);
+    
     if (configs.length > 0) {
+      console.log('[Configuration] Loading configs into local state:', configs.map(c => ({ id: c.id, category: c.category, page_id: c.page_id })));
       const newConfigs = { ...triggerConfigs };
       configs.forEach(cfg => {
         if (TRIGGER_CATEGORIES.includes(cfg.category)) {
@@ -392,6 +402,10 @@ export default function Configuration() {
         .eq('page_id', currentPage.id);
 
       // Clone configs to current page - use spread operator to create new arrays (deep copy)
+      console.log('[Configuration] Cloning from page:', cloneFromPageId);
+      console.log('[Configuration] Cloning TO page:', currentPage.id, currentPage.name);
+      console.log('[Configuration] Source configs:', sourceConfigs.map(c => ({ id: c.id, category: c.category, selected_message_ids: c.selected_message_ids })));
+      
       const newConfigs = sourceConfigs.map(config => ({
         page_id: currentPage.id,
         category: config.category,
@@ -407,12 +421,17 @@ export default function Configuration() {
         trigger_keywords: [...(config.trigger_keywords || [])],
         is_enabled: config.is_enabled
       }));
+      
+      console.log('[Configuration] New configs to insert:', newConfigs.map(c => ({ page_id: c.page_id, category: c.category, selected_message_ids: c.selected_message_ids })));
 
-      const { error: insertError } = await supabase
+      const { data: insertedData, error: insertError } = await supabase
         .from('page_configs')
-        .insert(newConfigs);
+        .insert(newConfigs)
+        .select('id, page_id, category, selected_message_ids');
 
       if (insertError) throw insertError;
+      
+      console.log('[Configuration] INSERT RESULT - configs created:', insertedData);
 
       // Find source page name for success message
       const sourcePage = pages.find(p => p.id === cloneFromPageId);
@@ -423,6 +442,11 @@ export default function Configuration() {
 
       setShowCloneDialog(false);
       setCloneFromPageId("");
+      
+      // IMPORTANT: Force save current page ID to localStorage before reload
+      // This prevents the page from switching back to the source page
+      localStorage.setItem('current_page_id', currentPage.id);
+      console.log('[Configuration] Clone complete. Saved current page ID:', currentPage.id);
       
       // Reload the page to reflect changes
       window.location.reload();
@@ -477,14 +501,14 @@ export default function Configuration() {
 
         {/* Category Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MessageCategory)}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             {TRIGGER_CATEGORIES.map(cat => {
               const Icon = CATEGORY_ICONS[cat];
               const config = triggerConfigs[cat];
               return (
-                <TabsTrigger key={cat} value={cat} className="flex items-center gap-2">
+                <TabsTrigger key={cat} value={cat} className="flex items-center gap-1 px-2">
                   <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{CATEGORY_LABELS[cat]}</span>
+                  <span className="hidden sm:inline text-xs">{CATEGORY_LABELS[cat]}</span>
                   {config.is_enabled && (
                     <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
                       ON

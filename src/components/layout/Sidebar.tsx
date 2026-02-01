@@ -19,6 +19,7 @@ import {
   Zap,
   Clock,
   Megaphone,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -35,11 +36,13 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Configuration", href: "/configuration", icon: Sliders },
   { name: "Welcome", href: "/welcome", icon: MessageSquare },
+  { name: "Comment Reply", href: "/comment-reply", icon: MessageCircle },
   { name: "Standard Reply", href: "/responses", icon: Zap },
   { name: "Sequences", href: "/sequences", icon: Clock },
   { name: "Broadcasts", href: "/broadcasts", icon: Megaphone },
   { name: "Analytics", href: "/analytics", icon: TrendingUp },
   { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Admin Panel", href: "/admin", icon: Shield, adminOnly: true },
 ];
 
 export function Sidebar() {
@@ -113,7 +116,9 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-thin">
-        {navigation.map((item, index) => {
+        {navigation
+          .filter(item => !item.adminOnly || user?.role === 'admin')
+          .map((item, index) => {
           const isActive = location.pathname === item.href;
           return (
             <motion.div
@@ -128,7 +133,8 @@ export function Sidebar() {
                   "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200",
                   isActive
                     ? "bg-gradient-primary text-primary-foreground glow-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5",
+                  item.adminOnly && "border border-amber-500/30"
                 )}
               >
                 <item.icon className="h-5 w-5" strokeWidth={1.5} />

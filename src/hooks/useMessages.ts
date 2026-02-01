@@ -336,6 +336,15 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
           console.error('[usePageConfigs] Update error:', updateError);
           throw updateError;
         }
+        
+        // Verify the update was applied correctly
+        const { data: verifyData } = await supabase
+          .from('page_configs')
+          .select('id, page_id, category, selected_message_ids')
+          .eq('id', existing.id)
+          .single();
+        console.log('[usePageConfigs] VERIFICATION after update:', JSON.stringify(verifyData, null, 2));
+        
         console.log('[usePageConfigs] Update successful');
         resultId = existing.id;
       } else {

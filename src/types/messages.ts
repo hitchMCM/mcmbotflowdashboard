@@ -3,8 +3,8 @@
 // Based on migration: 20260108_unified_message_architecture.sql
 // =====================================================================================
 
-// 4 categories: Welcome, Standard Reply (response), Sequence, Broadcast
-export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast';
+// 5 categories: Welcome, Standard Reply (response), Sequence, Broadcast, Comment Reply
+export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast' | 'comment_reply';
 export type SelectionMode = 'random' | 'fixed';
 export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 
@@ -292,6 +292,7 @@ export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   response: 'Standard Reply',
   sequence: 'Sequences',
   broadcast: 'Broadcasts',
+  comment_reply: 'Comment Reply',
 };
 
 // Category descriptions
@@ -300,6 +301,7 @@ export const CATEGORY_DESCRIPTIONS: Record<MessageCategory, string> = {
   response: 'Auto-responses triggered by keywords',
   sequence: 'Scheduled follow-up messages',
   broadcast: 'One-time or scheduled mass messages',
+  comment_reply: 'Auto-replies to Facebook comments',
 };
 
 // Selection mode labels
