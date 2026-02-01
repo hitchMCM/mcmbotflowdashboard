@@ -517,6 +517,7 @@ export function useMessagesByCategory() {
     response: [],
     sequence: [],
     broadcast: [],
+    comment_reply: [],
   });
   const [loading, setLoading] = useState(true);
 
@@ -537,6 +538,7 @@ export function useMessagesByCategory() {
           response: [],
           sequence: [],
           broadcast: [],
+          comment_reply: [],
         };
 
         (data || []).forEach(msg => {
@@ -569,6 +571,7 @@ export function useMessagesSummary() {
     response: { total: 0, active: 0 },
     sequence: { total: 0, active: 0 },
     broadcast: { total: 0, active: 0 },
+    comment_reply: { total: 0, active: 0 },
   });
   const [loading, setLoading] = useState(true);
 
@@ -587,6 +590,7 @@ export function useMessagesSummary() {
           response: { total: 0, active: 0 },
           sequence: { total: 0, active: 0 },
           broadcast: { total: 0, active: 0 },
+          comment_reply: { total: 0, active: 0 },
         };
 
         (data || []).forEach(row => {

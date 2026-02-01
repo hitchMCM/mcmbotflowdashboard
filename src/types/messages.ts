@@ -156,6 +156,7 @@ export interface MessageInsert {
   day_number?: number | null;
   message_order?: number | null;
   default_delay_hours?: number;
+  keywords?: string[] | null;
   weight?: number;
   is_active?: boolean;
   is_global?: boolean;

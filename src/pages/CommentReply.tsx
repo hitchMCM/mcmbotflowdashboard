@@ -1,6 +1,7 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { 
-  MessageCircle, Save, Plus, Trash2, Copy, Loader2, User, Check
+  MessageCircle, Save, Eye, Plus, Trash2, Copy, Loader2, X, Code, 
+  FileText, Pencil, Check, Hash, ToggleLeft
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,11 +12,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useState, useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { useMessages } from "@/hooks/useMessages";
 import { usePage } from "@/contexts/PageContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { PERSONALIZATION_TAGS } from "@/components/ui/TagAutocompleteTextarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,25 +35,37 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { MessageEditor, MessagePreview, generateMessengerPayload, convertLegacyToMessageContent, convertMessageContentToLegacy, parseMessengerPayload } from "@/components/messages";
+import { MessageContent, FACEBOOK_MESSAGE_TYPE_LABELS } from "@/types/messages";
+
+const defaultMessageContent: MessageContent = {
+  message_type: 'text',
+  text: "Thanks for your comment! 🙏"
+};
 
 export default function CommentReply() {
   const { currentPage } = usePage();
-  const { messages, loading, createMessage, updateMessage, deleteMessage, refetch } = useMessages({ category: 'comment_reply' });
+  const { messages, loading, createMessage, updateMessage, deleteMessage, refetch } = useMessages('comment_reply');
   const { toast } = useToast();
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showJsonDialog, setShowJsonDialog] = useState(false);
+  const [jsonEditMode, setJsonEditMode] = useState(false);
+  const [jsonContent, setJsonContent] = useState("");
+  const [newKeyword, setNewKeyword] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   
   // Store original data to compare for changes
   const originalDataRef = useRef<string>("");
   
-  // Local editing state - simple text only
+  // Local editing state - using new MessageContent type
   const [editName, setEditName] = useState("");
   const [isEnabled, setIsEnabled] = useState(true);
-  const [replyText, setReplyText] = useState("");
+  const [messageContent, setMessageContent] = useState<MessageContent>(defaultMessageContent);
+  const [keywords, setKeywords] = useState<string[]>([]);
 
   const selectedMessage = messages.find(m => m.id === selectedId) || null;
 
@@ -60,13 +81,25 @@ export default function CommentReply() {
     if (selectedMessage) {
       setEditName(selectedMessage.name);
       setIsEnabled(selectedMessage.is_active);
-      setReplyText(selectedMessage.text_content || "");
+      setKeywords(selectedMessage.keywords || []);
+      
+      // Convert legacy format to new MessageContent
+      const content = convertLegacyToMessageContent({
+        text_content: selectedMessage.text_content,
+        title: selectedMessage.title,
+        subtitle: selectedMessage.subtitle,
+        image_url: selectedMessage.image_url,
+        buttons: selectedMessage.buttons as any[],
+        messenger_payload: selectedMessage.messenger_payload
+      });
+      setMessageContent(content);
       
       // Store original data for change detection
       originalDataRef.current = JSON.stringify({
         name: selectedMessage.name,
         is_active: selectedMessage.is_active,
-        text_content: selectedMessage.text_content || ""
+        keywords: selectedMessage.keywords || [],
+        content: content
       });
       setHasChanges(false);
     }
@@ -79,47 +112,77 @@ export default function CommentReply() {
     const currentData = JSON.stringify({
       name: editName,
       is_active: isEnabled,
-      text_content: replyText
+      keywords: keywords,
+      content: messageContent
     });
     
     setHasChanges(currentData !== originalDataRef.current);
-  }, [editName, isEnabled, replyText, selectedMessage]);
+  }, [editName, isEnabled, keywords, messageContent, selectedMessage]);
 
+  const addKeyword = () => {
+    const kw = newKeyword.trim().toLowerCase();
+    if (kw && !keywords.includes(kw)) {
+      setKeywords([...keywords, kw]);
+      setNewKeyword("");
+    }
+  };
 
+  const removeKeyword = (keyword: string) => {
+    setKeywords(keywords.filter(k => k !== keyword));
+  };
+
+  const generateJSON = () => {
+    return generateMessengerPayload(messageContent);
+  };
+
+  const copyJSON = () => {
+    navigator.clipboard.writeText(JSON.stringify(generateJSON(), null, 2));
+    toast({ title: "📋 Copied!", description: "JSON copied to clipboard" });
+  };
+
+  const openJsonDialog = () => {
+    setJsonContent(JSON.stringify(generateJSON(), null, 2));
+    setJsonEditMode(false);
+    setShowJsonDialog(true);
+  };
+
+  const applyJsonChanges = () => {
+    try {
+      const parsed = JSON.parse(jsonContent);
+      const newContent = parseMessengerPayload(parsed);
+      setMessageContent(newContent);
+      setShowJsonDialog(false);
+      toast({ title: "✅ Applied!", description: "JSON changes applied" });
+    } catch (e) {
+      toast({ title: "❌ Invalid JSON", description: "Please check your JSON syntax", variant: "destructive" });
+    }
+  };
 
   const handleSave = async () => {
     if (!selectedMessage) return;
     setSaving(true);
     try {
-      console.log('[CommentReply] Saving message:', selectedMessage.id);
-      console.log('[CommentReply] Data:', { name: editName, is_active: isEnabled, text_content: replyText });
+      // Convert MessageContent to legacy format for database
+      const legacyData = convertMessageContentToLegacy(messageContent);
       
-      // Note: keywords not saved to DB yet - column doesn't exist
-      // TODO: Add keywords column to messages table
-      const success = await updateMessage(selectedMessage.id, {
+      await updateMessage(selectedMessage.id, {
         name: editName,
         is_active: isEnabled,
-        text_content: replyText,
+        ...legacyData
       });
-      
-      console.log('[CommentReply] Update result:', success);
-      
-      if (!success) {
-        throw new Error('Update returned false');
-      }
       
       // Update original data reference after successful save
       originalDataRef.current = JSON.stringify({
         name: editName,
         is_active: isEnabled,
-        text_content: replyText
+        keywords: keywords,
+        content: messageContent
       });
       setHasChanges(false);
       
       toast({ title: "✅ Saved!", description: "Comment reply updated." });
       await refetch();
     } catch (error) {
-      console.error('[CommentReply] Save error:', error);
       toast({ title: "❌ Error", description: "Unable to save.", variant: "destructive" });
     } finally {
       setSaving(false);
@@ -132,305 +195,372 @@ export default function CommentReply() {
         name: `Comment Reply ${messages.length + 1}`,
         category: 'comment_reply',
         text_content: "Thanks for your comment! 🙏",
-        is_active: true,
+        is_active: true
       });
-      
       if (created) {
-        setSelectedId(created.id);
-        toast({ title: "✅ Created", description: "New comment reply created." });
         await refetch();
+        setSelectedId(created.id);
+        toast({ title: "✅ Created!", description: "New comment reply added." });
+      } else {
+        toast({ title: "❌ Error", description: "Unable to create message. Check console for details.", variant: "destructive" });
       }
     } catch (error) {
-      console.error('Error creating comment reply:', error);
-      toast({ title: "❌ Error", description: "Unable to create.", variant: "destructive" });
+      console.error('Create error:', error);
+      toast({ title: "❌ Error", description: "Unable to create message.", variant: "destructive" });
     }
   };
 
   const handleDelete = async () => {
     if (!selectedMessage) return;
+    
     setDeleting(true);
     try {
-      await deleteMessage(selectedMessage.id);
-      setShowDeleteDialog(false);
-      setSelectedId(null);
-      toast({ title: "🗑️ Deleted", description: "Comment reply deleted." });
-      await refetch();
-    } catch (error) {
-      toast({ title: "❌ Error", description: "Unable to delete.", variant: "destructive" });
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleDuplicate = async () => {
-    if (!selectedMessage) return;
-    try {
-      const created = await createMessage({
-        name: `${editName} (Copy)`,
-        category: 'comment_reply',
-        text_content: replyText,
-        is_active: isEnabled,
-      });
-      
-      if (created) {
-        setSelectedId(created.id);
-        toast({ title: "📋 Duplicated", description: "Comment reply copied." });
+      const success = await deleteMessage(selectedMessage.id);
+      if (success) {
+        toast({ title: "🗑️ Deleted!", description: "Comment reply removed." });
+        setSelectedId(null);
         await refetch();
+      } else {
+        toast({ title: "❌ Error", description: "Unable to delete message.", variant: "destructive" });
       }
     } catch (error) {
-      toast({ title: "❌ Error", description: "Unable to duplicate.", variant: "destructive" });
+      console.error('Delete error:', error);
+      toast({ title: "❌ Error", description: "Unable to delete message.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
+  if (loading) {
+    return (
+      <DashboardLayout pageName="Comment Replies">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
-    <DashboardLayout pageName="Comment Reply">
-      <div className="h-[calc(100vh-120px)] flex gap-6">
-        {/* Left Panel - Message List */}
-        <Card className="w-80 flex-shrink-0 glass border-white/10">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                  Comment Replies
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  {messages.length} message{messages.length !== 1 ? 's' : ''}
-                </CardDescription>
-              </div>
-              <Button 
-                size="sm" 
-                onClick={handleAddNew}
-                className="h-8 bg-gradient-primary gap-1"
-              >
-                <Plus className="h-3 w-3" />
-                New
-              </Button>
-            </div>
-          </CardHeader>
-          <Separator className="bg-white/10" />
-          <ScrollArea className="h-[calc(100%-80px)]">
-            <div className="p-2 space-y-1">
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No comment replies yet</p>
-                  <p className="text-xs">Click "New" to create one</p>
-                </div>
-              ) : (
-                messages.map((msg) => (
-                  <button
-                    key={msg.id}
-                    onClick={() => setSelectedId(msg.id)}
-                    className={cn(
-                      "w-full text-left p-3 rounded-lg transition-all",
-                      "hover:bg-white/10 border border-transparent",
-                      selectedId === msg.id 
-                        ? "bg-primary/20 border-primary/50" 
-                        : "bg-white/5"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{msg.name}</p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {msg.text_content?.slice(0, 50) || "No content"}
-                        </p>
-                      </div>
-                      <Badge 
-                        variant={msg.is_active ? "default" : "secondary"}
+    <DashboardLayout pageName="Comment Replies">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <MessageCircle className="h-6 w-6 text-primary" />
+              Comment Replies
+            </h1>
+            <p className="text-muted-foreground">
+              Automatic responses to comments on your posts
+            </p>
+          </div>
+          <Button onClick={handleAddNew} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New Reply
+          </Button>
+        </div>
+
+        <div className="grid lg:grid-cols-12 gap-6">
+          {/* Left Panel - Message List */}
+          <Card className="lg:col-span-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span>All Replies ({messages.length})</span>
+              </CardTitle>
+              <CardDescription>Click to select and edit</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-[600px]">
+                <div className="p-4 space-y-2">
+                  {messages.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                      <p>No replies yet</p>
+                      <Button variant="link" onClick={handleAddNew}>Create your first reply</Button>
+                    </div>
+                  ) : (
+                    messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        onClick={() => setSelectedId(msg.id)}
                         className={cn(
-                          "text-[10px] h-5",
-                          msg.is_active ? "bg-green-500/20 text-green-400" : ""
+                          "p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md",
+                          selectedId === msg.id 
+                            ? "border-primary bg-primary/5 shadow-sm" 
+                            : "border-border hover:border-primary/50"
                         )}
                       >
-                        {msg.is_active ? "ON" : "OFF"}
-                      </Badge>
-                    </div>
-                    {msg.keywords && msg.keywords.length > 0 && (
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {msg.keywords.slice(0, 3).map((kw, i) => (
-                          <Badge key={i} variant="outline" className="text-[9px] h-4 px-1">
-                            {kw}
-                          </Badge>
-                        ))}
-                        {msg.keywords.length > 3 && (
-                          <Badge variant="outline" className="text-[9px] h-4 px-1">
-                            +{msg.keywords.length - 3}
-                          </Badge>
-                        )}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium truncate">{msg.name}</h4>
+                              <Badge variant={msg.is_active ? "default" : "secondary"} className="text-[10px] shrink-0">
+                                {msg.is_active ? "Active" : "Inactive"}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {msg.text_content || msg.title || "Template message"}
+                            </p>
+                            {/* Keywords */}
+                            {msg.keywords && (msg.keywords as string[]).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {(msg.keywords as string[]).slice(0, 3).map((kw, i) => (
+                                  <Badge key={i} variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">
+                                    #{kw}
+                                  </Badge>
+                                ))}
+                                {(msg.keywords as string[]).length > 3 && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    +{(msg.keywords as string[]).length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {selectedId === msg.id && (
+                            <Check className="h-5 w-5 text-primary shrink-0" />
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </Card>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
 
-        {/* Right Panel - Editor */}
-        <div className="flex-1 flex flex-col gap-4 min-w-0">
-          {selectedMessage ? (
-            <>
-              {/* Header */}
-              <Card className="glass border-white/10 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="p-2 rounded-lg bg-gradient-primary">
-                      <MessageCircle className="h-5 w-5" />
+          {/* Right Panel - Editor */}
+          <div className="lg:col-span-8 space-y-4">
+            {selectedMessage ? (
+              <>
+                {/* Editor Card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Pencil className="h-4 w-4" />
+                        Edit Reply
+                      </CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={openJsonDialog}>
+                          <Code className="h-4 w-4 mr-1" />
+                          JSON
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={copyJSON}>
+                          <Copy className="h-4 w-4 mr-1" />
+                          Copy
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)} disabled={deleting}>
+                          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <Input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="font-semibold text-lg bg-transparent border-0 p-0 h-auto focus-visible:ring-0"
-                        placeholder="Reply name..."
-                      />
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Name & Status */}
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <FileText className="h-3 w-3" />
+                          Reply Name
+                        </Label>
+                        <Input 
+                          value={editName} 
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Enter reply name..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-1">
+                          <ToggleLeft className="h-3 w-3" />
+                          Status
+                        </Label>
+                        <div className="flex items-center gap-3 h-10">
+                          <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
+                          <span className={cn("text-sm", isEnabled ? "text-green-600" : "text-muted-foreground")}>
+                            {isEnabled ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Keywords Section */}
+                    <div className="space-y-3 p-4 bg-blue-50/50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Label className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+                        <Hash className="h-4 w-4" />
+                        Trigger Keywords
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter keyword..."
+                          value={newKeyword}
+                          onChange={(e) => setNewKeyword(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addKeyword()}
+                          className="flex-1"
+                        />
+                        <Button onClick={addKeyword} size="sm">
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {keywords.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {keywords.map((kw, i) => (
+                            <Badge key={i} variant="secondary" className="gap-1 pl-2 pr-1 py-1">
+                              #{kw}
+                              <button
+                                onClick={() => removeKeyword(kw)}
+                                title={`Remove keyword ${kw}`}
+                                className="ml-1 hover:bg-destructive/20 rounded p-0.5"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        Text Message Reply
+                        When a comment contains any of these keywords, this reply will be sent.
                       </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 mr-2">
-                      <Label htmlFor="active" className="text-xs text-muted-foreground">Active</Label>
-                      <Switch
-                        id="active"
-                        checked={isEnabled}
-                        onCheckedChange={setIsEnabled}
-                      />
-                    </div>
-                    <Button variant="outline" size="sm" onClick={handleDuplicate}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-red-400 hover:text-red-300"
-                      onClick={() => setShowDeleteDialog(true)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+
+                    <Separator />
+
+                    {/* Message Editor Component */}
+                    <MessageEditor 
+                      value={messageContent}
+                      onChange={setMessageContent}
+                      showQuickReplies={true}
+                    />
+
+                    {/* Save Button */}
                     <Button 
                       onClick={handleSave} 
-                      disabled={saving || !hasChanges}
+                      disabled={saving || !hasChanges} 
                       className={cn(
-                        "gap-2 transition-all duration-300",
+                        "w-full transition-all duration-300",
                         hasChanges 
                           ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white animate-pulse shadow-lg shadow-orange-500/30" 
-                          : "bg-gradient-primary"
-                      )}
+                          : ""
+                      )} 
+                      size="lg"
                     >
                       {saving ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
                           Saving...
                         </>
                       ) : hasChanges ? (
                         <>
-                          <Save className="h-4 w-4" />
+                          <Save className="h-4 w-4 mr-2" />
                           Save Changes
                         </>
                       ) : (
                         <>
-                          <Check className="h-4 w-4" />
+                          <Check className="h-4 w-4 mr-2" />
                           Saved
                         </>
                       )}
                     </Button>
-                  </div>
-                </div>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              {/* Reply Text Editor */}
-              <Card className="glass border-white/10 flex-1 flex flex-col">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" />
-                    Reply Message
-                  </CardTitle>
-                  <CardDescription>
-                    This text will be sent as a reply to comments
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col gap-3">
-                  {/* Personalization Tags Info */}
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                    <User className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-xs text-blue-300 font-medium">Personalization Tags</p>
-                      <p className="text-xs text-blue-400/70">{"Type {{ to insert: {{FullName}}, {{FirstName}}, {{LastName}}"}</p>
-                    </div>
-                    <div className="flex gap-1">
-                      {PERSONALIZATION_TAGS.map(tag => (
-                        <Badge 
-                          key={tag.tag} 
-                          variant="outline" 
-                          className="text-[10px] cursor-pointer hover:bg-blue-500/20 border-blue-500/30"
-                          onClick={() => setReplyText(prev => prev + tag.tag)}
-                        >
-                          {tag.tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <Input
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value.replace(/[\r\n]/g, ''))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                      }
-                    }}
-                    placeholder="Hi {{FirstName}}! Thanks for your comment! 🙏 Check out our latest offers..."
-                    className="bg-white/5 border-white/10"
-                    maxLength={2000}
-                  />
-                  <div className="flex justify-between items-center">
-                    <p className="text-xs text-muted-foreground">
-                      {replyText.length} / 2000 characters
-                    </p>
-                    <p className="text-xs text-amber-400/70">
-                      ⚠️ No line breaks allowed in comment replies
-                    </p>
-                  </div>
+                {/* Preview Card */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      Preview
+                      <Badge variant="outline" className="ml-2">
+                        {FACEBOOK_MESSAGE_TYPE_LABELS[messageContent.message_type]}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <MessagePreview content={messageContent} />
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <MessageCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Reply Selected</h3>
+                  <p className="text-muted-foreground mb-4">Select a reply from the list or create a new one</p>
+                  <Button onClick={handleAddNew}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create New Reply
+                  </Button>
                 </CardContent>
               </Card>
-            </>
-          ) : (
-            <Card className="glass border-white/10 flex-1 flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <MessageCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="font-medium">Select a comment reply to edit</p>
-                <p className="text-sm">or create a new one</p>
-              </div>
-            </Card>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
+      {/* JSON Dialog */}
+      <Dialog open={showJsonDialog} onOpenChange={setShowJsonDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Code className="h-5 w-5" />
+              Messenger JSON Payload
+            </DialogTitle>
+            <DialogDescription>
+              View or edit the raw JSON that will be sent to Messenger API
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Switch checked={jsonEditMode} onCheckedChange={setJsonEditMode} />
+              <Label>Edit Mode</Label>
+            </div>
+            <ScrollArea className="h-[400px] rounded-lg border">
+              {jsonEditMode ? (
+                <Textarea
+                  value={jsonContent}
+                  onChange={(e) => setJsonContent(e.target.value)}
+                  className="min-h-[400px] font-mono text-sm border-0 focus-visible:ring-0"
+                />
+              ) : (
+                <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+                  {jsonContent}
+                </pre>
+              )}
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              navigator.clipboard.writeText(jsonContent);
+              toast({ title: "📋 Copied!" });
+            }}>
+              <Copy className="h-4 w-4 mr-1" />
+              Copy
+            </Button>
+            {jsonEditMode && (
+              <Button onClick={applyJsonChanges}>
+                <Check className="h-4 w-4 mr-1" />
+                Apply Changes
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent className="glass border-white/10">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Comment Reply?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Reply?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{selectedMessage?.name}". This action cannot be undone.
+              Are you sure you want to delete "{selectedMessage?.name}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-red-500 hover:bg-red-600"
-              disabled={deleting}
-            >
-              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
