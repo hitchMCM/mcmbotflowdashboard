@@ -15,7 +15,7 @@ import { useMessages } from "@/hooks/useMessages";
 import { usePage } from "@/contexts/PageContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { TagAutocompleteTextarea, PERSONALIZATION_TAGS } from "@/components/ui/TagAutocompleteTextarea";
+import { PERSONALIZATION_TAGS } from "@/components/ui/TagAutocompleteTextarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -379,20 +379,24 @@ export default function CommentReply() {
                     </div>
                   </div>
                   
-                  <TagAutocompleteTextarea
+                  <Input
                     value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Enter your reply message here...
-
-Example: Hi {{FirstName}}! Thanks for your comment! 🙏 Check out our latest offers at example.com"
-                    className="flex-1 min-h-[200px] bg-white/5 border-white/10 resize-none"
+                    onChange={(e) => setReplyText(e.target.value.replace(/[\r\n]/g, ''))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder="Hi {{FirstName}}! Thanks for your comment! 🙏 Check out our latest offers..."
+                    className="bg-white/5 border-white/10"
+                    maxLength={2000}
                   />
                   <div className="flex justify-between items-center">
                     <p className="text-xs text-muted-foreground">
                       {replyText.length} / 2000 characters
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      Supports emojis, links & personalization tags
+                    <p className="text-xs text-amber-400/70">
+                      ⚠️ No line breaks allowed in comment replies
                     </p>
                   </div>
                 </CardContent>
