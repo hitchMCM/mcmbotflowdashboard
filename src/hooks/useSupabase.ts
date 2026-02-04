@@ -313,6 +313,71 @@ export function useAllSequenceClicks() {
 // ============================================
 // SUBSCRIBERS HOOK
 // ============================================
+
+// Hook to get broadcast-eligible subscribers count
+// Eligible = is_subscribed = true AND subscribed more than 24 hours ago
+export function useBroadcastEligibleSubscribers(pageId?: string | null) {
+  const [totalSubscribers, setTotalSubscribers] = useState(0);
+  const [eligibleSubscribers, setEligibleSubscribers] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCounts = useCallback(async () => {
+    if (!pageId || pageId === 'demo') {
+      setTotalSubscribers(0);
+      setEligibleSubscribers(0);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Calculate 24 hours ago timestamp
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Fetch counts in parallel
+      const [totalResult, eligibleResult] = await Promise.all([
+        // Total subscribed count
+        supabase
+          .from('subscribers')
+          .select('id', { count: 'exact', head: true })
+          .eq('page_id', pageId)
+          .eq('is_subscribed', true),
+        // Eligible for broadcast: subscribed = true AND subscribed_at <= 24 hours ago
+        supabase
+          .from('subscribers')
+          .select('id', { count: 'exact', head: true })
+          .eq('page_id', pageId)
+          .eq('is_subscribed', true)
+          .lt('subscribed_at', twentyFourHoursAgo)
+      ]);
+
+      if (totalResult.error) throw totalResult.error;
+      if (eligibleResult.error) throw eligibleResult.error;
+
+      setTotalSubscribers(totalResult.count || 0);
+      setEligibleSubscribers(eligibleResult.count || 0);
+      setError(null);
+    } catch (err: any) {
+      console.error('[useBroadcastEligibleSubscribers] Error:', err);
+      setError(err?.message || 'Error loading subscriber counts');
+    } finally {
+      setLoading(false);
+    }
+  }, [pageId]);
+
+  useEffect(() => { fetchCounts(); }, [fetchCounts]);
+
+  return { 
+    totalSubscribers, 
+    eligibleSubscribers, 
+    ineligibleSubscribers: totalSubscribers - eligibleSubscribers,
+    loading, 
+    error, 
+    refetch: fetchCounts 
+  };
+}
+
 export function useSubscribers(pageId?: string | null, searchTerm?: string) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [totalCount, setTotalCount] = useState(0);

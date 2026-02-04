@@ -4,14 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { 
   Users, Send, MousePointer, TrendingUp, 
   Loader2, RefreshCw, BarChart3, MessageCircle, Zap, Radio,
-  Calendar, AlertCircle, Settings, Plus
+  Calendar, AlertCircle, Settings, Plus, UserCheck, Clock
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useDashboardStats, useMessagesByType, useSubscribersGrowth } from "@/hooks/useSupabase";
+import { useDashboardStats, useMessagesByType, useSubscribersGrowth, useBroadcastEligibleSubscribers } from "@/hooks/useSupabase";
 import { StatCard, ConfigStatCard } from "@/components/dashboard/StatCard";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
@@ -34,6 +34,12 @@ export default function Dashboard() {
   const { stats, loading, error, refetch } = useDashboardStats(pageId);
   const { data: messagesByType, loading: msgLoading } = useMessagesByType(pageId);
   const { data: subscribersGrowth, loading: subLoading } = useSubscribersGrowth(pageId);
+  const { 
+    totalSubscribers: broadcastTotal, 
+    eligibleSubscribers, 
+    ineligibleSubscribers, 
+    loading: broadcastLoading 
+  } = useBroadcastEligibleSubscribers(pageId);
   const [timeRange, setTimeRange] = useState<TimeRange>("week");
   
   const currentHour = new Date().getHours();
@@ -174,6 +180,60 @@ export default function Dashboard() {
             />
           </div>
         </section>
+
+        {/* Broadcast Eligibility Stats */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          aria-label="Broadcast eligibility"
+        >
+          <GlassCard className="p-4 bg-gradient-to-r from-blue-500/5 to-purple-500/5 border-blue-500/20">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/20">
+                  <Radio className="h-5 w-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Broadcast Subscribers</p>
+                  <p className="text-xl font-bold">
+                    {broadcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : broadcastTotal}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-500/20">
+                  <UserCheck className="h-5 w-5 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Eligible (24h+)</p>
+                  <p className="text-xl font-bold text-green-400">
+                    {broadcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : eligibleSubscribers}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/20">
+                  <Clock className="h-5 w-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Under 24h</p>
+                  <p className="text-xl font-bold text-amber-400">
+                    {broadcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : ineligibleSubscribers}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="hidden md:block text-right">
+                <p className="text-xs text-muted-foreground">
+                  Facebook requires 24h before sending broadcasts
+                </p>
+              </div>
+            </div>
+          </GlassCard>
+        </motion.section>
 
         {/* Quick Actions */}
         <motion.section
