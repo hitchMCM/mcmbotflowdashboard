@@ -1,4 +1,4 @@
-import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType } from "@/types/messages";
+import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType, ImageFullContent } from "@/types/messages";
 
 /**
  * Generate Facebook Messenger API JSON payload from MessageContent
@@ -146,6 +146,65 @@ export function generateMessengerPayload(content: MessageContent): any {
       payload.message.text = content.text || undefined;
       addQuickReplies();
       break;
+
+    case 'image_full':
+      // Generate array of 2 messages: image first, then text+buttons
+      if (content.image_full) {
+        const messages: any[] = [];
+        
+        // First message: the full image as attachment
+        messages.push({
+          recipient: { id: "{{PSID}}" },
+          message: {
+            attachment: {
+              type: "image",
+              payload: {
+                url: content.image_full.image_url,
+                is_reusable: true
+              }
+            }
+          }
+        });
+        
+        // Second message: text with buttons (if any)
+        if (content.image_full.text || (content.image_full.buttons && content.image_full.buttons.length > 0)) {
+          const secondMsg: any = {
+            recipient: { id: "{{PSID}}" },
+            message: {}
+          };
+          
+          if (content.image_full.buttons && content.image_full.buttons.length > 0) {
+            // Use button template if we have buttons
+            secondMsg.message.attachment = {
+              type: "template",
+              payload: {
+                template_type: "button",
+                text: content.image_full.text || "👆",
+                buttons: processButtons(content.image_full.buttons)
+              }
+            };
+          } else {
+            // Just text if no buttons
+            secondMsg.message.text = content.image_full.text;
+          }
+          
+          // Add quick replies to the last message
+          if (content.quick_replies && content.quick_replies.length > 0) {
+            secondMsg.message.quick_replies = content.quick_replies.map(qr => ({
+              content_type: qr.content_type || "text",
+              title: qr.title,
+              payload: qr.payload || qr.title,
+              ...(qr.image_url ? { image_url: qr.image_url } : {})
+            }));
+          }
+          
+          messages.push(secondMsg);
+        }
+        
+        // Return array of messages instead of single payload
+        return { _multi_message: true, messages };
+      }
+      break;
   }
 
   return payload;
@@ -156,6 +215,47 @@ export function generateMessengerPayload(content: MessageContent): any {
  */
 export function parseMessengerPayload(json: any): MessageContent {
   const content: MessageContent = { message_type: 'text' };
+  
+  // Handle multi-message format (image_full)
+  if (json?._multi_message && json.messages) {
+    const messages = json.messages;
+    if (messages.length >= 1) {
+      const firstMsg = messages[0]?.message;
+      const secondMsg = messages[1]?.message;
+      
+      // Check if first is image attachment
+      if (firstMsg?.attachment?.type === 'image') {
+        content.message_type = 'image_full';
+        content.image_full = {
+          image_url: firstMsg.attachment.payload?.url || '',
+          text: '',
+          buttons: []
+        };
+        
+        // Parse second message for text and buttons
+        if (secondMsg) {
+          if (secondMsg.attachment?.payload?.template_type === 'button') {
+            content.image_full.text = secondMsg.attachment.payload.text || '';
+            content.image_full.buttons = secondMsg.attachment.payload.buttons?.map(parseButton) || [];
+          } else if (secondMsg.text) {
+            content.image_full.text = secondMsg.text;
+          }
+          
+          // Parse quick replies
+          if (secondMsg.quick_replies) {
+            content.quick_replies = secondMsg.quick_replies.map((qr: any) => ({
+              content_type: qr.content_type || "text",
+              title: qr.title,
+              payload: qr.payload,
+              image_url: qr.image_url
+            }));
+          }
+        }
+        
+        return content;
+      }
+    }
+  }
   
   if (!json?.message) return content;
 
@@ -330,6 +430,14 @@ export function convertMessageContentToLegacy(content: MessageContent): {
         legacy.buttons = content.media_element.buttons || [];
       }
       break;
+
+    case 'image_full':
+      if (content.image_full) {
+        legacy.image_url = content.image_full.image_url || null;
+        legacy.text_content = content.image_full.text || null;
+        legacy.buttons = content.image_full.buttons || [];
+      }
+      break;
   }
 
   return legacy;
@@ -350,6 +458,8 @@ export function getMessagePreviewText(content: MessageContent): string {
       return content.elements?.[0]?.title?.substring(0, 50) || "Button message";
     case 'media':
       return `${content.media_element?.media_type === 'video' ? 'Video' : 'Image'} message`;
+    case 'image_full':
+      return content.image_full?.text?.substring(0, 50) || "Full image message";
     default:
       return "Message";
   }

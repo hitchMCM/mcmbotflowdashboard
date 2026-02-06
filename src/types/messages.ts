@@ -12,14 +12,15 @@ export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 // FACEBOOK MESSAGE TYPES
 // =====================================================================================
 
-// 6 Facebook message types supported
+// 7 Facebook message types supported
 export type FacebookMessageType = 
   | 'text'           // Simple text message
   | 'generic'        // Generic template (card with image, title, subtitle, buttons)
   | 'button'         // Button template (text + buttons, no image)
   | 'media'          // Media template (image/video with optional button)
   | 'carousel'       // Multiple generic cards (up to 10)
-  | 'quick_replies'; // Message with quick reply buttons
+  | 'quick_replies'  // Message with quick reply buttons
+  | 'image_full';    // Full image (not cropped) + text + buttons (sends 2 messages)
 
 // Button types for Facebook
 export interface MessageButton {
@@ -59,6 +60,13 @@ export interface MediaElement {
   buttons?: MessageButton[];
 }
 
+// Image full content (for image_full type)
+export interface ImageFullContent {
+  image_url: string;
+  text?: string;
+  buttons?: MessageButton[];
+}
+
 // Complete message content structure
 export interface MessageContent {
   message_type: FacebookMessageType;
@@ -72,6 +80,9 @@ export interface MessageContent {
   // For media template
   media_element?: MediaElement;
   
+  // For image_full type (full image + text + buttons)
+  image_full?: ImageFullContent;
+  
   // For quick replies (can be added to any message type)
   quick_replies?: QuickReply[];
 }
@@ -84,6 +95,7 @@ export const FACEBOOK_MESSAGE_TYPE_LABELS: Record<FacebookMessageType, string> =
   media: 'Média (Image/Vidéo)',
   carousel: 'Carrousel',
   quick_replies: 'Quick Replies',
+  image_full: 'Image Complète + Texte',
 };
 
 // Facebook Message Type Descriptions
@@ -94,6 +106,7 @@ export const FACEBOOK_MESSAGE_TYPE_DESCRIPTIONS: Record<FacebookMessageType, str
   media: 'Image ou vidéo avec un bouton optionnel',
   carousel: 'Plusieurs cartes défilables horizontalement (max 10)',
   quick_replies: 'Boutons de réponse rapide qui disparaissent après clic',
+  image_full: 'Image en plein format (9:16, portrait) + texte + boutons. Envoie 2 messages séquentiels.',
 };
 
 // =====================================================================================

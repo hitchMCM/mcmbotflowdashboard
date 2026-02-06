@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Phone, Play, AlertTriangle, Link } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Phone, Play, AlertTriangle, Link, ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MessageContent, MessageButton, TemplateElement, QuickReply } from "@/types/messages";
+import { MessageContent, MessageButton, TemplateElement, QuickReply, ImageFullContent } from "@/types/messages";
 import { FB_LIMITS } from "./MessageEditor";
 
 interface MessagePreviewProps {
@@ -23,8 +23,25 @@ const isOverLimit = (text: string | undefined, limit: number): boolean => {
 
 export function MessagePreview({ content, className }: MessagePreviewProps) {
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   
   const { message_type } = content;
+
+  // Check if image URL has issues
+  const checkImageUrl = (url: string | undefined): { valid: boolean; warning?: string } => {
+    if (!url) return { valid: false };
+    if (!url.startsWith('https://')) {
+      return { valid: false, warning: 'URL must start with https://' };
+    }
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      return { valid: false, warning: 'Local URLs won\'t work on Facebook' };
+    }
+    return { valid: true };
+  };
+
+  const handleImageError = (imageUrl: string) => {
+    setImageErrors(prev => ({ ...prev, [imageUrl]: true }));
+  };
 
   // Render a button
   const renderButton = (btn: MessageButton, idx: number) => {
@@ -51,18 +68,35 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
     const titleOver = isOverLimit(element.title, FB_LIMITS.TITLE);
     const subtitleOver = isOverLimit(element.subtitle, FB_LIMITS.SUBTITLE);
     const buttonsOver = (element.buttons?.length || 0) > FB_LIMITS.MAX_BUTTONS;
+    const imageCheck = checkImageUrl(element.image_url);
+    const hasImageError = element.image_url ? imageErrors[element.image_url] : false;
     
     return (
       <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
         {element.image_url && (
           <div 
             className={cn(
-              "h-40 bg-cover bg-center bg-gray-300 relative",
+              "h-40 bg-gray-200 relative overflow-hidden",
               element.default_action?.url && "cursor-pointer"
             )}
-            style={{ backgroundImage: `url(${element.image_url})` }}
             title={element.default_action?.url ? `Cliquable: ${element.default_action.url}` : undefined}
           >
+            {/* Show warning for invalid URLs */}
+            {(!imageCheck.valid || hasImageError) ? (
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground bg-gray-300">
+                <ImageOff className="h-8 w-8 mb-2" />
+                <span className="text-xs text-center px-4">
+                  {imageCheck.warning || (hasImageError ? "Image failed to load" : "Invalid image URL")}
+                </span>
+              </div>
+            ) : (
+              <img 
+                src={element.image_url} 
+                alt={element.title || "Card image"}
+                className="w-full h-full object-contain bg-gray-100"
+                onError={() => handleImageError(element.image_url!)}
+              />
+            )}
             {/* Clickable image indicator */}
             {element.default_action?.url && (
               <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
@@ -378,6 +412,86 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
           }
         </div>
       )}
+
+      {/* Image Full - Full image + text + buttons (2 messages preview) */}
+      {message_type === 'image_full' && content.image_full && (() => {
+        const imageCheck = checkImageUrl(content.image_full.image_url);
+        const hasImageError = content.image_full.image_url ? imageErrors[content.image_full.image_url] : false;
+        const textOver = isOverLimit(content.image_full.text, FB_LIMITS.BUTTON_TEMPLATE_TEXT);
+        const buttonsOver = (content.image_full.buttons?.length || 0) > FB_LIMITS.MAX_BUTTONS;
+        
+        return (
+          <div className="space-y-2">
+            {/* Message 1: Full Image */}
+            <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
+              <div className="relative">
+                {content.image_full.image_url && (!imageCheck.valid || hasImageError) ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-muted-foreground bg-gray-300">
+                    <ImageOff className="h-8 w-8 mb-2" />
+                    <span className="text-xs text-center px-4">
+                      {imageCheck.warning || (hasImageError ? "Image failed to load" : "Invalid image URL")}
+                    </span>
+                  </div>
+                ) : content.image_full.image_url ? (
+                  <img 
+                    src={content.image_full.image_url} 
+                    alt="Full image"
+                    className="w-full max-h-80 object-contain bg-gray-100"
+                    onError={() => handleImageError(content.image_full!.image_url)}
+                  />
+                ) : (
+                  <div className="h-64 flex items-center justify-center text-muted-foreground bg-gray-200">
+                    <div className="text-center">
+                      <ImageOff className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Image complète (9:16, portrait)</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Separator showing 2 messages */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
+              <div className="flex-1 h-px bg-border"></div>
+              <span>Message suivant</span>
+              <div className="flex-1 h-px bg-border"></div>
+            </div>
+
+            {/* Message 2: Text + Buttons */}
+            <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
+              <div className="p-4">
+                {textOver && (
+                  <p className="text-xs text-destructive mb-2 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Texte trop long ({content.image_full.text?.length}/{FB_LIMITS.BUTTON_TEMPLATE_TEXT})
+                  </p>
+                )}
+                <p className={cn(
+                  "whitespace-pre-line",
+                  textOver && "text-destructive"
+                )}>
+                  {truncate(content.image_full.text, FB_LIMITS.BUTTON_TEMPLATE_TEXT) || "Votre texte ici..."}
+                </p>
+              </div>
+              {content.image_full.buttons && content.image_full.buttons.length > 0 && (
+                <div className={cn("border-t", buttonsOver && "border-destructive")}>
+                  {content.image_full.buttons.slice(0, FB_LIMITS.MAX_BUTTONS).map((btn, i) => renderButton(btn, i))}
+                  {buttonsOver && (
+                    <div className="py-2 px-4 text-xs text-destructive text-center bg-destructive/10">
+                      <AlertTriangle className="h-3 w-3 inline mr-1" />
+                      +{content.image_full.buttons.length - FB_LIMITS.MAX_BUTTONS} bouton(s) ignoré(s)
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {content.quick_replies && content.quick_replies.length > 0 && 
+              renderQuickReplies(content.quick_replies)
+            }
+          </div>
+        );
+      })()}
     </div>
   );
 }

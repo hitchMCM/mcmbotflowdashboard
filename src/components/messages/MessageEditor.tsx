@@ -29,6 +29,7 @@ import {
   TemplateElement, 
   MediaElement,
   MessageContent,
+  ImageFullContent,
   FACEBOOK_MESSAGE_TYPE_LABELS,
 } from "@/types/messages";
 
@@ -87,6 +88,12 @@ const defaultQuickReply: QuickReply = {
   payload: ""
 };
 
+const defaultImageFull: ImageFullContent = {
+  image_url: "",
+  text: "",
+  buttons: []
+};
+
 export function MessageEditor({ value, onChange, showQuickReplies = true }: MessageEditorProps) {
   const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   
@@ -121,6 +128,9 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
       case 'quick_replies':
         newContent.text = value.text || "";
         newContent.quick_replies = value.quick_replies?.length ? value.quick_replies : [{ ...defaultQuickReply }];
+        break;
+      case 'image_full':
+        newContent.image_full = value.image_full || { ...defaultImageFull };
         break;
     }
     
@@ -231,6 +241,35 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
     onChange({ ...value, quick_replies });
   };
 
+  // Image Full management
+  const updateImageFull = (updates: Partial<ImageFullContent>) => {
+    onChange({ 
+      ...value, 
+      image_full: { ...(value.image_full || defaultImageFull), ...updates } 
+    });
+  };
+
+  const updateImageFullButton = (index: number, updates: Partial<MessageButton>) => {
+    const imageFull = value.image_full || defaultImageFull;
+    const buttons = [...(imageFull.buttons || [])];
+    buttons[index] = { ...buttons[index], ...updates };
+    onChange({ ...value, image_full: { ...imageFull, buttons } });
+  };
+
+  const addImageFullButton = () => {
+    const imageFull = value.image_full || defaultImageFull;
+    if ((imageFull.buttons?.length || 0) < 3) {
+      const buttons = [...(imageFull.buttons || []), { type: "web_url" as const, title: "Button", url: "" }];
+      onChange({ ...value, image_full: { ...imageFull, buttons } });
+    }
+  };
+
+  const removeImageFullButton = (index: number) => {
+    const imageFull = value.image_full || defaultImageFull;
+    const buttons = (imageFull.buttons || []).filter((_, i) => i !== index);
+    onChange({ ...value, image_full: { ...imageFull, buttons } });
+  };
+
   // Get current element for generic/button/carousel
   const currentElement = value.elements?.[messageType === 'carousel' ? activeCarouselIndex : 0];
 
@@ -293,6 +332,15 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
           >
             <Zap className="h-4 w-4 mr-2" />
             Quick Replies
+          </Button>
+          <Button
+            variant={messageType === 'image_full' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMessageType('image_full')}
+            className="justify-start col-span-2 sm:col-span-1 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/30"
+          >
+            <Image className="h-4 w-4 mr-2" />
+            Image Complète
           </Button>
         </div>
       </div>
@@ -717,6 +765,123 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <p className="text-xs text-muted-foreground">
               Les Quick Replies disparaissent après que l'utilisateur en clique un. Max {FB_LIMITS.QUICK_REPLY_TITLE} caractères par bouton.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Image Full Editor - Full image (no crop) + text + buttons */}
+      {messageType === 'image_full' && (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-lg p-3">
+            <p className="text-sm text-purple-300">
+              <strong>Image Complète</strong> - L'image s'affichera en entier (format portrait 9:16 OK). 
+              Ce type envoie 2 messages séquentiels : l'image d'abord, puis le texte avec les boutons.
+            </p>
+          </div>
+
+          {/* Image URL */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Image className="h-4 w-4" />
+              Image (affichage complet, pas de crop)
+            </Label>
+            <ImageUpload
+              value={value.image_full?.image_url || ""}
+              onChange={(url) => updateImageFull({ image_url: url })}
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+
+          {/* Text */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Texte (sous l'image)</Label>
+              <CharCount current={value.image_full?.text?.length || 0} max={FB_LIMITS.BUTTON_TEMPLATE_TEXT} />
+            </div>
+            <TagAutocompleteTextarea
+              placeholder="Votre message texte... (tapez {{ pour les tags)"
+              value={value.image_full?.text || ""}
+              onChange={(e) => updateImageFull({ text: e.target.value })}
+              className={cn("min-h-24", (value.image_full?.text?.length || 0) > FB_LIMITS.BUTTON_TEMPLATE_TEXT && "border-destructive")}
+              maxLength={FB_LIMITS.BUTTON_TEMPLATE_TEXT}
+            />
+          </div>
+
+          {/* Buttons */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Boutons ({value.image_full?.buttons?.length || 0}/{FB_LIMITS.MAX_BUTTONS})</Label>
+              {(value.image_full?.buttons?.length || 0) < FB_LIMITS.MAX_BUTTONS && (
+                <Button variant="outline" size="sm" onClick={addImageFullButton}>
+                  <Plus className="h-3 w-3 mr-1" />
+                  Ajouter Bouton
+                </Button>
+              )}
+            </div>
+
+            {value.image_full?.buttons?.map((btn, idx) => (
+              <Card key={idx} className="bg-muted/30">
+                <CardContent className="p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">Bouton {idx + 1}</Badge>
+                    <Button variant="ghost" size="icon" onClick={() => removeImageFullButton(idx)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <div className="relative">
+                      <Input
+                        placeholder="Texte du bouton"
+                        value={btn.title || ""}
+                        onChange={(e) => updateImageFullButton(idx, { title: e.target.value })}
+                        maxLength={FB_LIMITS.BUTTON_TITLE}
+                        className={cn((btn.title?.length || 0) > FB_LIMITS.BUTTON_TITLE && "border-destructive")}
+                      />
+                      <span className={cn(
+                        "absolute right-2 top-1/2 -translate-y-1/2 text-[10px]",
+                        (btn.title?.length || 0) > FB_LIMITS.BUTTON_TITLE ? "text-destructive" : "text-muted-foreground"
+                      )}>
+                        {btn.title?.length || 0}/{FB_LIMITS.BUTTON_TITLE}
+                      </span>
+                    </div>
+                    <Select
+                      value={btn.type}
+                      onValueChange={(type) => updateImageFullButton(idx, { type: type as any })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="web_url">Lien Web</SelectItem>
+                        <SelectItem value="postback">Postback</SelectItem>
+                        <SelectItem value="phone_number">Téléphone</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {btn.type === 'web_url' && (
+                    <Input
+                      placeholder="https://..."
+                      value={btn.url || ""}
+                      onChange={(e) => updateImageFullButton(idx, { url: e.target.value })}
+                    />
+                  )}
+                  {btn.type === 'phone_number' && (
+                    <Input
+                      placeholder="+212..."
+                      value={btn.payload || ""}
+                      onChange={(e) => updateImageFullButton(idx, { payload: e.target.value })}
+                    />
+                  )}
+                  {btn.type === 'postback' && (
+                    <Input
+                      placeholder="Payload (ex: ACTION_BUY)"
+                      value={btn.payload || ""}
+                      onChange={(e) => updateImageFullButton(idx, { payload: e.target.value })}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       )}
