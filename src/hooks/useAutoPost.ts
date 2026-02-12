@@ -379,7 +379,7 @@ export async function duplicateConfigToPages(
         subfolder_ids: sourceConfig.subfolder_ids,
         subfolder_names: sourceConfig.subfolder_names,
         custom_caption: sourceConfig.custom_caption,
-        is_active: false, // cloned configs start paused
+        is_active: true,
         updated_at: new Date().toISOString(),
       };
 
@@ -443,7 +443,7 @@ export async function cloneConfigFromPage(
       subfolder_ids: source.subfolder_ids,
       subfolder_names: source.subfolder_names,
       custom_caption: source.custom_caption,
-      is_active: false,
+      is_active: true,
       updated_at: new Date().toISOString(),
     };
 

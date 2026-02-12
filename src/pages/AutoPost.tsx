@@ -366,7 +366,7 @@ export default function AutoPost() {
       if (result.success.length > 0) {
         toast({
           title: "Duplicated!",
-          description: `Schedule cloned to ${result.success.length} page${result.success.length > 1 ? "s" : ""} (paused by default)`,
+          description: `Schedule cloned and activated on ${result.success.length} page${result.success.length > 1 ? "s" : ""}`,
         });
       }
       if (result.failed.length > 0) {
@@ -399,7 +399,7 @@ export default function AutoPost() {
     try {
       const success = await cloneConfigFromPage(cloneSourcePageId, pageId);
       if (success) {
-        toast({ title: "Cloned!", description: "Schedule cloned from other page (paused by default)" });
+        toast({ title: "Cloned!", description: "Schedule cloned and activated!" });
         // Refresh the config for current page
         window.location.reload();
       } else {
