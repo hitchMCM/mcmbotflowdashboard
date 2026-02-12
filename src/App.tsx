@@ -28,6 +28,7 @@ import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
 import Register from "./pages/Register";
 import Admin from "./pages/Admin";
+import AutoPost from "./pages/AutoPost";
 
 console.log('[App] Loading application...');
 
@@ -74,6 +75,7 @@ const App = () => (
             <Route path="/configuration" element={<ProtectedWithPage><Configuration /></ProtectedWithPage>} />
             <Route path="/settings" element={<ProtectedWithPage><Settings /></ProtectedWithPage>} />
             <Route path="/admin" element={<ProtectedWithPage><Admin /></ProtectedWithPage>} />
+            <Route path="/auto-post" element={<ProtectedWithPage><AutoPost /></ProtectedWithPage>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

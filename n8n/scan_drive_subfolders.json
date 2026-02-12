@@ -1,0 +1,193 @@
+{
+  "name": "MCM - Scan Google Drive Subfolders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000001",
+      "name": "Every 30s",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 340]
+    },
+    {
+      "parameters": {
+        "url": "http://207.180.232.14:3002/google_drive_connections?needs_scan=eq.true&is_connected=eq.true&select=*",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000002",
+      "name": "GET Connections",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PostgREST returns a JSON array\n// Split into individual items, stop if empty\nconst input = $input.first().json;\nconst arr = Array.isArray(input) ? input : [input];\nconst results = arr.filter(c => c && c.id);\nif (results.length === 0) return [];\nreturn results.map(c => ({ json: c }));"
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000003",
+      "name": "Check and Split",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 340]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000004",
+      "name": "Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [920, 340]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.root_folder_id }}"
+        },
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "myDrive"
+          },
+          "foldersOnly": true
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000005",
+      "name": "List Drive Subfolders",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1140, 340],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the current connection from the Loop node\nconst connection = $('Loop').first().json;\nconst items = $input.all();\n\nif (items.length === 0) {\n  return [{ json: { subfolders: [], connection } }];\n}\n\n// Map each Drive folder to the DB schema\nconst subfolders = items.map(item => ({\n  connection_id: connection.id,\n  page_id: connection.page_id,\n  subfolder_drive_id: item.json.id,\n  name: item.json.name,\n  file_count: 0\n}));\n\nreturn [{ json: { subfolders, connection } }];"
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000006",
+      "name": "Map to DB Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://207.180.232.14:3002/google_drive_subfolders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.subfolders) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000007",
+      "name": "Upsert Subfolders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 340]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://207.180.232.14:3002/google_drive_connections?id=eq.{{ $('Map to DB Format').first().json.connection.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ needs_scan: false, last_scanned_at: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000008",
+      "name": "Mark Scanned",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 340]
+    }
+  ],
+  "connections": {
+    "Every 30s": {
+      "main": [
+        [{ "node": "GET Connections", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Connections": {
+      "main": [
+        [{ "node": "Check and Split", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check and Split": {
+      "main": [
+        [{ "node": "Loop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop": {
+      "main": [
+        [{ "node": "List Drive Subfolders", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "List Drive Subfolders": {
+      "main": [
+        [{ "node": "Map to DB Format", "type": "main", "index": 0 }]
+      ]
+    },
+    "Map to DB Format": {
+      "main": [
+        [{ "node": "Upsert Subfolders", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upsert Subfolders": {
+      "main": [
+        [{ "node": "Mark Scanned", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mark Scanned": {
+      "main": [
+        [{ "node": "Loop", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

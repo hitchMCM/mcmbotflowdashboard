@@ -20,6 +20,7 @@ import {
   Clock,
   Megaphone,
   Shield,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -34,7 +35,8 @@ import { logout, useAuth } from "@/components/auth/ProtectedRoute";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Configuration", href: "/configuration", icon: Sliders },
+  { name: "Sending Config", href: "/configuration", icon: Sliders },
+  { name: "Auto Post", href: "/auto-post", icon: CalendarClock },
   { name: "Welcome", href: "/welcome", icon: MessageSquare },
   { name: "Comment Reply", href: "/comment-reply", icon: MessageCircle },
   { name: "Standard Reply", href: "/responses", icon: Zap },

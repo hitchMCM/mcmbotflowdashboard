@@ -21,6 +21,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.pagesManagement': 'Pages Management',
     'settings.addPage': 'Add Page',
     'settings.teamManagement': 'Team Management',
+    'settings.integrations': 'Integrations',
     
     // Navigation
     'nav.dashboard': 'Dashboard',
@@ -66,6 +67,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.pagesManagement': 'Gestion des pages',
     'settings.addPage': 'Ajouter une page',
     'settings.teamManagement': 'Gestion de l\'équipe',
+    'settings.integrations': 'Intégrations',
     
     // Navigation
     'nav.dashboard': 'Tableau de bord',
@@ -111,6 +113,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.pagesManagement': 'إدارة الصفحات',
     'settings.addPage': 'إضافة صفحة',
     'settings.teamManagement': 'إدارة الفريق',
+    'settings.integrations': 'التكاملات',
     
     // Navigation
     'nav.dashboard': 'لوحة التحكم',
@@ -156,6 +159,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.pagesManagement': 'Gestión de páginas',
     'settings.addPage': 'Añadir página',
     'settings.teamManagement': 'Gestión del equipo',
+    'settings.integrations': 'Integraciones',
     
     // Navigation
     'nav.dashboard': 'Panel',

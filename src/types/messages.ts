@@ -1,7 +1,11 @@
 // =====================================================================================
 // Types for Unified Message Architecture
 // Based on migration: 20260108_unified_message_architecture.sql
+// Updated: 20260207 - Added Instagram platform support
 // =====================================================================================
+
+// Platform support: Facebook or Instagram
+export type Platform = 'facebook' | 'instagram';
 
 // 5 categories: Welcome, Standard Reply (response), Sequence, Broadcast, Comment Reply
 export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast' | 'comment_reply';
@@ -9,7 +13,7 @@ export type SelectionMode = 'random' | 'fixed';
 export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 
 // =====================================================================================
-// FACEBOOK MESSAGE TYPES
+// MESSAGE TYPES BY PLATFORM
 // =====================================================================================
 
 // 7 Facebook message types supported
@@ -21,6 +25,13 @@ export type FacebookMessageType =
   | 'carousel'       // Multiple generic cards (up to 10)
   | 'quick_replies'  // Message with quick reply buttons
   | 'image_full';    // Full image (not cropped) + text + buttons (sends 2 messages)
+
+// Instagram message types (subset of Facebook - Instagram API is more limited)
+export type InstagramMessageType = 
+  | 'text'           // Simple text message
+  | 'image'          // Image with optional text
+  | 'generic'        // Generic template (limited support)
+  | 'quick_replies'; // Quick reply buttons (max 13)
 
 // Button types for Facebook
 export interface MessageButton {
@@ -109,6 +120,28 @@ export const FACEBOOK_MESSAGE_TYPE_DESCRIPTIONS: Record<FacebookMessageType, str
   image_full: 'Image en plein format (9:16, portrait) + texte + boutons. Envoie 2 messages séquentiels.',
 };
 
+// Instagram Message Type Labels
+export const INSTAGRAM_MESSAGE_TYPE_LABELS: Record<InstagramMessageType, string> = {
+  text: 'Text',
+  image: 'Image',
+  generic: 'Card',
+  quick_replies: 'Quick Replies',
+};
+
+// Instagram Message Type Descriptions
+export const INSTAGRAM_MESSAGE_TYPE_DESCRIPTIONS: Record<InstagramMessageType, string> = {
+  text: 'Simple text message',
+  image: 'Image with optional caption',
+  generic: 'Card with image and text (limited support)',
+  quick_replies: 'Quick reply buttons (max 13 options)',
+};
+
+// Helper to check if a message type is supported on Instagram
+export const isInstagramSupported = (messageType: FacebookMessageType): boolean => {
+  const supportedTypes: FacebookMessageType[] = ['text', 'generic', 'quick_replies'];
+  return supportedTypes.includes(messageType);
+};
+
 // =====================================================================================
 // MESSAGES (Global Pool)
 // =====================================================================================
@@ -125,6 +158,9 @@ export interface Message {
   media_type: MediaType;
   buttons: any[];
   messenger_payload: any | null;
+  
+  // Platform support (default: facebook)
+  platform: Platform;
   
   // For sequences (optional metadata, not for scheduling)
   day_number: number | null;
@@ -158,6 +194,7 @@ export interface MessageInsert {
   id?: string;
   name: string;
   category: MessageCategory;
+  platform?: Platform;
   title?: string | null;
   subtitle?: string | null;
   text_content?: string | null;

@@ -4,7 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil, Save } from "lucide-react";
+import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil, Save, HardDrive, Link2, CheckCircle2, ArrowRight, ExternalLink, Unplug } from "lucide-react";
+import { useGoogleDriveConnection } from "@/hooks/useAutoPost";
+import { extractGoogleDriveFolderId } from "@/types/autoPost";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { usePage } from "@/contexts/PageContext";
@@ -42,6 +44,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 const tabs = [
   { id: "general", icon: SettingsIcon },
   { id: "pages", icon: Globe },
+  { id: "integrations", icon: Link2 },
   { id: "team", icon: Users },
 ];
 
@@ -64,7 +67,7 @@ interface Page {
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
   const { theme, setTheme, language, setLanguage, timezone, setTimezone, t, saveSettingsToDatabase, isSaving } = useSettings();
-  const { pages, refreshPages } = usePage();
+  const { pages, refreshPages, currentPage } = usePage();
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -95,6 +98,16 @@ export default function Settings() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [pageToDelete, setPageToDelete] = useState<Page | null>(null);
   const [deletingPage, setDeletingPage] = useState(false);
+
+  // Google Drive connection wizard
+  const { connection: driveConnection, loading: driveLoading, connect: connectDrive, disconnect: disconnectDrive, deleteConnection: deleteDriveConnection, refresh: refreshDrive } = useGoogleDriveConnection(currentPage?.id || null);
+  const [showDriveWizard, setShowDriveWizard] = useState(false);
+  const [driveWizardStep, setDriveWizardStep] = useState(1);
+  const [driveFolderInput, setDriveFolderInput] = useState("");
+  const [driveFolderName, setDriveFolderName] = useState("");
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const SYSTEM_EMAIL = "mcmllc87@gmail.com";
 
   // Extract page ID from Facebook URL or return as-is if already an ID
   const extractPageId = (input: string): string => {
@@ -271,6 +284,47 @@ export default function Settings() {
     } finally {
       setDeletingPage(false);
     }
+  };
+
+  // Google Drive connection handler
+  const handleDriveConnect = async () => {
+    const folderId = extractGoogleDriveFolderId(driveFolderInput);
+    if (!folderId) {
+      toast({ title: "❌ Error", description: "Invalid Google Drive link or folder ID", variant: "destructive" });
+      return;
+    }
+
+    setDriveConnecting(true);
+    try {
+      const success = await connectDrive(driveFolderInput, driveFolderName || 'Google Drive Folder');
+      if (success) {
+        setDriveWizardStep(3);
+        toast({ title: "✅ Connected!", description: "Google Drive folder linked successfully" });
+      } else {
+        toast({ title: "❌ Error", description: "Failed to connect Google Drive folder", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "❌ Error", description: "Connection failed", variant: "destructive" });
+    } finally {
+      setDriveConnecting(false);
+    }
+  };
+
+  const handleDriveDisconnect = async () => {
+    const success = await deleteDriveConnection();
+    if (success) {
+      toast({ title: "🔌 Disconnected", description: "Google Drive folder unlinked" });
+      setShowDisconnectConfirm(false);
+      setDriveFolderInput("");
+      setDriveFolderName("");
+    }
+  };
+
+  const openDriveWizard = () => {
+    setDriveWizardStep(1);
+    setDriveFolderInput("");
+    setDriveFolderName("");
+    setShowDriveWizard(true);
   };
 
   return (
@@ -512,6 +566,149 @@ export default function Settings() {
                   <div className="text-center py-12">
                     <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <p className="text-muted-foreground">Team management coming soon...</p>
+                  </div>
+                )}
+
+                {activeTab === "integrations" && (
+                  <div className="space-y-6">
+                    <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                      <Link2 className="h-5 w-5 text-primary" />
+                      Integrations
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Connect external services to enhance your automation workflow.
+                    </p>
+
+                    {/* Google Drive Integration Card */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden"
+                    >
+                      <div className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            {/* Google Drive Logo */}
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 via-green-400 to-yellow-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                              <HardDrive className="h-7 w-7 text-white" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-lg">Google Drive</h4>
+                              <p className="text-sm text-muted-foreground">
+                                Auto-publish files from Drive to your Facebook pages
+                              </p>
+                            </div>
+                          </div>
+                          <div>
+                            {driveLoading ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            ) : driveConnection?.is_connected ? (
+                              <div className="flex items-center gap-2">
+                                <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-400">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  Connected
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Not connected</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Connected state */}
+                        {driveConnection?.is_connected && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="mt-5 pt-5 border-t border-white/10"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="space-y-1">
+                                <p className="text-sm font-medium">{driveConnection.folder_name}</p>
+                                <p className="text-xs text-muted-foreground font-mono">
+                                  ID: {driveConnection.root_folder_id}
+                                </p>
+                                {driveConnection.last_scanned_at && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Last scanned: {new Date(driveConnection.last_scanned_at).toLocaleDateString()}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={openDriveWizard}
+                                  className="gap-1.5 border-white/10"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Change
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setShowDisconnectConfirm(true)}
+                                  className="gap-1.5 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                                >
+                                  <Unplug className="h-3.5 w-3.5" />
+                                  Disconnect
+                                </Button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* Not connected state */}
+                        {!driveConnection?.is_connected && !driveLoading && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="mt-5 pt-5 border-t border-white/10 space-y-5"
+                          >
+                            {/* Step-by-step guide */}
+                            <div className="rounded-xl bg-blue-500/5 border border-blue-500/10 p-4 space-y-3">
+                              <h5 className="text-sm font-semibold text-blue-300 flex items-center gap-2">
+                                📋 How to connect Google Drive
+                              </h5>
+                              <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+                                <li>Open <a href="https://drive.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Google Drive</a> and create a folder (e.g. <strong>"facebook"</strong>)</li>
+                                <li>Inside that folder, create one <strong>subfolder per post</strong> (e.g. "post1", "post2") — each subfolder holds the images/videos for that post</li>
+                                <li>Right-click the <strong>main folder</strong> → <em>Share</em> → add <strong className="text-blue-300 select-all">mcmllc87@gmail.com</strong> as an <strong>Editor</strong></li>
+                                <li>Copy the folder link and paste it below, then give it a name</li>
+                                <li>Once connected, go to <strong>Auto Post</strong> to set up your publishing schedule</li>
+                              </ol>
+                            </div>
+
+                            {!currentPage ? (
+                              <p className="text-sm text-amber-400">
+                                ⚠️ Select a page first from the sidebar to connect Google Drive.
+                              </p>
+                            ) : (
+                              <Button
+                                onClick={openDriveWizard}
+                                className="gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white shadow-lg shadow-blue-500/20"
+                              >
+                                <Link2 className="h-4 w-4" />
+                                Connect Google Drive
+                              </Button>
+                            )}
+                          </motion.div>
+                        )}
+                      </div>
+                    </motion.div>
+
+                    {/* Future integrations placeholder */}
+                    <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 opacity-50">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-xl bg-white/5 flex items-center justify-center">
+                          <Globe className="h-7 w-7 text-muted-foreground/50" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-lg text-muted-foreground">More Integrations</h4>
+                          <p className="text-sm text-muted-foreground/70">Coming soon...</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </GlassCard>
@@ -775,6 +972,243 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Google Drive Connection Wizard */}
+      <Dialog open={showDriveWizard} onOpenChange={setShowDriveWizard}>
+        <DialogContent className="glass border-white/10 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 via-green-400 to-yellow-400 flex items-center justify-center">
+                <HardDrive className="h-5 w-5 text-white" />
+              </div>
+              Connect Google Drive
+            </DialogTitle>
+            <DialogDescription>
+              Link your Google Drive folder to auto-publish content to Facebook
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Progress Steps */}
+          <div className="flex items-center justify-center gap-2 py-4">
+            {[1, 2, 3].map((step) => (
+              <div key={step} className="flex items-center gap-2">
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300",
+                  driveWizardStep >= step
+                    ? "bg-gradient-to-r from-blue-500 to-green-400 text-white shadow-lg shadow-blue-500/30"
+                    : "bg-white/10 text-muted-foreground"
+                )}>
+                  {driveWizardStep > step ? <CheckCircle2 className="h-4 w-4" /> : step}
+                </div>
+                {step < 3 && (
+                  <div className={cn(
+                    "w-12 h-0.5 rounded-full transition-all duration-300",
+                    driveWizardStep > step ? "bg-gradient-to-r from-blue-500 to-green-400" : "bg-white/10"
+                  )} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Step 1: Share Folder */}
+          {driveWizardStep === 1 && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="space-y-4"
+            >
+              <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-4">
+                <h4 className="font-medium text-blue-400 mb-2 flex items-center gap-2">
+                  <span className="text-lg">📁</span>
+                  Step 1: Share your Google Drive folder
+                </h4>
+                <ol className="space-y-3 text-sm text-muted-foreground">
+                  <li className="flex gap-2">
+                    <span className="text-blue-400 font-bold">1.</span>
+                    <span>Open your Google Drive and find the folder with your media files</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-blue-400 font-bold">2.</span>
+                    <span>Right-click the folder → <strong className="text-foreground">Share</strong></span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-blue-400 font-bold">3.</span>
+                    <div>
+                      Add this email as <strong className="text-foreground">Viewer</strong>:
+                      <div className="mt-2 flex items-center gap-2">
+                        <code className="flex-1 bg-black/30 px-3 py-2 rounded-lg text-blue-300 font-mono text-xs">
+                          {SYSTEM_EMAIL}
+                        </code>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10 shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(SYSTEM_EMAIL);
+                            toast({ title: "📋 Copied!", description: "Email copied to clipboard" });
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="flex justify-between pt-2">
+                <Button variant="outline" onClick={() => setShowDriveWizard(false)} className="border-white/10">
+                  Cancel
+                </Button>
+                <Button onClick={() => setDriveWizardStep(2)} className="gap-2 bg-gradient-to-r from-blue-600 to-blue-500">
+                  I've shared the folder
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 2: Paste Link */}
+          {driveWizardStep === 2 && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="space-y-4"
+            >
+              <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-4">
+                <h4 className="font-medium text-green-400 mb-2 flex items-center gap-2">
+                  <span className="text-lg">🔗</span>
+                  Step 2: Paste your folder link
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Copy the URL from your browser when you're inside the folder
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Folder Name (optional)</Label>
+                  <Input
+                    placeholder="e.g. My Marketing Content"
+                    value={driveFolderName}
+                    onChange={(e) => setDriveFolderName(e.target.value)}
+                    className="bg-white/5 border-white/10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Google Drive Folder Link or ID <span className="text-red-400">*</span></Label>
+                  <Input
+                    placeholder="https://drive.google.com/drive/folders/1ABC123XYZ..."
+                    value={driveFolderInput}
+                    onChange={(e) => setDriveFolderInput(e.target.value)}
+                    className="bg-white/5 border-white/10 font-mono text-sm"
+                  />
+                  {driveFolderInput && (
+                    <p className="text-xs">
+                      {extractGoogleDriveFolderId(driveFolderInput) ? (
+                        <span className="text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Folder ID detected: {extractGoogleDriveFolderId(driveFolderInput)}
+                        </span>
+                      ) : (
+                        <span className="text-red-400">
+                          ❌ Could not extract folder ID. Please paste the full URL.
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Example: https://drive.google.com/drive/folders/1ABC123XYZ456
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-between pt-2">
+                <Button variant="outline" onClick={() => setDriveWizardStep(1)} className="border-white/10">
+                  Back
+                </Button>
+                <Button
+                  onClick={handleDriveConnect}
+                  disabled={!extractGoogleDriveFolderId(driveFolderInput) || driveConnecting}
+                  className="gap-2 bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600"
+                >
+                  {driveConnecting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="h-4 w-4" />
+                      Connect Folder
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 3: Success */}
+          {driveWizardStep === 3 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center space-y-4 py-4"
+            >
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
+              >
+                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-emerald-500 to-green-400 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                  <CheckCircle2 className="h-10 w-10 text-white" />
+                </div>
+              </motion.div>
+              <div>
+                <h3 className="text-xl font-bold text-emerald-400">Connected!</h3>
+                <p className="text-muted-foreground mt-1">
+                  Your Google Drive folder has been linked successfully.
+                </p>
+              </div>
+              <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 text-sm text-left space-y-2">
+                <p className="text-emerald-400 font-medium">What happens next?</p>
+                <ul className="space-y-1 text-muted-foreground">
+                  <li>📁 Your subfolders will be scanned automatically</li>
+                  <li>📅 Go to <strong className="text-foreground">Auto Post</strong> to schedule publications</li>
+                  <li>🔄 Files will be posted in rotation following your schedule</li>
+                </ul>
+              </div>
+              <Button
+                onClick={() => setShowDriveWizard(false)}
+                className="gap-2 bg-gradient-primary"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Done
+              </Button>
+            </motion.div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Disconnect Confirmation */}
+      <AlertDialog open={showDisconnectConfirm} onOpenChange={setShowDisconnectConfirm}>
+        <AlertDialogContent className="glass border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Google Drive?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the connection to your Google Drive folder. Auto-posting will stop.
+              You can reconnect at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDriveDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
