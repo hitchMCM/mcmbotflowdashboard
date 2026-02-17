@@ -1,4 +1,4 @@
-import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType, ImageFullContent } from "@/types/messages";
+import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType, ImageFullContent, OptInContent } from "@/types/messages";
 
 /**
  * Generate Facebook Messenger API JSON payload from MessageContent
@@ -145,6 +145,20 @@ export function generateMessengerPayload(content: MessageContent): any {
     case 'quick_replies':
       payload.message.text = content.text || undefined;
       addQuickReplies();
+      break;
+
+    case 'opt_in':
+      // Facebook one_time_notif_req template
+      if (content.opt_in) {
+        payload.message.attachment = {
+          type: "template",
+          payload: {
+            template_type: "one_time_notif_req",
+            title: content.opt_in.title || "Souhaitez-vous recevoir nos mises à jour ?",
+            payload: content.opt_in.payload || "OPT_IN_YES"
+          }
+        };
+      }
       break;
 
     case 'image_full':
@@ -438,6 +452,13 @@ export function convertMessageContentToLegacy(content: MessageContent): {
         legacy.buttons = content.image_full.buttons || [];
       }
       break;
+
+    case 'opt_in':
+      if (content.opt_in) {
+        legacy.text_content = content.opt_in.title || null;
+        legacy.buttons = [];
+      }
+      break;
   }
 
   return legacy;
@@ -460,6 +481,8 @@ export function getMessagePreviewText(content: MessageContent): string {
       return `${content.media_element?.media_type === 'video' ? 'Video' : 'Image'} message`;
     case 'image_full':
       return content.image_full?.text?.substring(0, 50) || "Full image message";
+    case 'opt_in':
+      return content.opt_in?.title?.substring(0, 50) || "Opt-in message";
     default:
       return "Message";
   }

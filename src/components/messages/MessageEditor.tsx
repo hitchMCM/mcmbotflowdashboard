@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { 
   Plus, Trash2, X, Image, Type, MousePointer, 
-  MessageSquare, Layout, Film, ChevronLeft, ChevronRight, Zap, GripVertical, AlertTriangle, Link
+  MessageSquare, Layout, Film, ChevronLeft, ChevronRight, Zap, GripVertical, AlertTriangle, Link, UserCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +30,7 @@ import {
   MediaElement,
   MessageContent,
   ImageFullContent,
+  OptInContent,
   FACEBOOK_MESSAGE_TYPE_LABELS,
 } from "@/types/messages";
 
@@ -94,6 +95,11 @@ const defaultImageFull: ImageFullContent = {
   buttons: []
 };
 
+const defaultOptIn: OptInContent = {
+  title: "Souhaitez-vous recevoir nos mises à jour ?",
+  payload: "OPT_IN_YES",
+};
+
 export function MessageEditor({ value, onChange, showQuickReplies = true }: MessageEditorProps) {
   const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   
@@ -131,6 +137,9 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
         break;
       case 'image_full':
         newContent.image_full = value.image_full || { ...defaultImageFull };
+        break;
+      case 'opt_in':
+        newContent.opt_in = value.opt_in || { ...defaultOptIn };
         break;
     }
     
@@ -270,6 +279,14 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
     onChange({ ...value, image_full: { ...imageFull, buttons } });
   };
 
+  // Opt-in management
+  const updateOptIn = (updates: Partial<OptInContent>) => {
+    onChange({
+      ...value,
+      opt_in: { ...(value.opt_in || defaultOptIn), ...updates }
+    });
+  };
+
   // Get current element for generic/button/carousel
   const currentElement = value.elements?.[messageType === 'carousel' ? activeCarouselIndex : 0];
 
@@ -341,6 +358,15 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
           >
             <Image className="h-4 w-4 mr-2" />
             Image Complète
+          </Button>
+          <Button
+            variant={messageType === 'opt_in' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMessageType('opt_in')}
+            className="justify-start col-span-2 sm:col-span-1 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/30"
+          >
+            <UserCheck className="h-4 w-4 mr-2" />
+            Opt-in
           </Button>
         </div>
       </div>
@@ -882,6 +908,46 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Opt-in Editor (one_time_notif_req) */}
+      {messageType === 'opt_in' && (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-lg p-3">
+            <p className="text-sm text-green-400">
+              <strong>Opt-in (one_time_notif_req)</strong> — Demande de notification unique Facebook. 
+              L'utilisateur voit un bouton "Recevoir le message" généré automatiquement par Facebook.
+            </p>
+          </div>
+
+          {/* Title */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Titre de la demande</Label>
+              <CharCount current={value.opt_in?.title?.length || 0} max={FB_LIMITS.BUTTON_TEMPLATE_TEXT} />
+            </div>
+            <TagAutocompleteTextarea
+              placeholder="Souhaitez-vous recevoir nos mises à jour ? (tapez {{ pour les tags)"
+              value={value.opt_in?.title || ""}
+              onChange={(e) => updateOptIn({ title: e.target.value })}
+              className={cn("min-h-24", (value.opt_in?.title?.length || 0) > FB_LIMITS.BUTTON_TEMPLATE_TEXT && "border-destructive")}
+              maxLength={FB_LIMITS.BUTTON_TEMPLATE_TEXT}
+            />
+          </div>
+
+          {/* Payload */}
+          <div className="space-y-2">
+            <Label>Payload</Label>
+            <Input
+              placeholder="OPT_IN_YES"
+              value={value.opt_in?.payload || ""}
+              onChange={(e) => updateOptIn({ payload: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Identifiant envoyé à votre webhook quand l'utilisateur accepte la notification.
+            </p>
           </div>
         </div>
       )}

@@ -709,7 +709,7 @@ export default function Landing() {
           {/* Footer Bottom */}
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2026 MCM BotFlow. All rights reserved.
+              © 2026 HE SIMON BIZ LLC. All rights reserved.
             </p>
             <div className="flex items-center gap-6">
               <a href="mailto:support@mcmbotflow.com" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">

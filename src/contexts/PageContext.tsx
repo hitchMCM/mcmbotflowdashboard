@@ -1,9 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-// Platform type for Facebook or Instagram
-export type Platform = 'facebook' | 'instagram';
-
 interface Page {
   id: string;
   facebook_page_id: string;
@@ -13,10 +10,6 @@ interface Page {
   subscribers_count: number;
   access_token?: string | null;
   user_id?: string;
-  // Platform support
-  platform: Platform;
-  instagram_user_id?: string | null;
-  instagram_username?: string | null;
   // Statistics columns
   total_sent?: number;
   total_delivered?: number;
@@ -114,11 +107,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
         is_active: row.is_active ?? true,
         subscribers_count: row.subscribers_count || 0,
         access_token: row.access_token,
-        user_id: row.user_id,
-        // Platform support - default to 'facebook' if not set
-        platform: (row.platform as Platform) || 'facebook',
-        instagram_user_id: row.instagram_user_id,
-        instagram_username: row.instagram_username
+        user_id: row.user_id
       }));
       
       console.log('[PageContext] Mapped pages:', loadedPages);

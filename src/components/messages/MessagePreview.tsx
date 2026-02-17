@@ -492,6 +492,44 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
           </div>
         );
       })()}
+
+      {/* Opt-in (one_time_notif_req) */}
+      {message_type === 'opt_in' && content.opt_in && (() => {
+        const textOver = isOverLimit(content.opt_in.title, FB_LIMITS.BUTTON_TEMPLATE_TEXT);
+        
+        return (
+          <div className="space-y-2">
+            <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
+              {/* Title */}
+              <div className="p-4">
+                {textOver && (
+                  <p className="text-xs text-destructive mb-2 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Texte trop long ({content.opt_in.title?.length}/{FB_LIMITS.BUTTON_TEMPLATE_TEXT})
+                  </p>
+                )}
+                <p className={cn(
+                  "whitespace-pre-line",
+                  textOver && "text-destructive"
+                )}>
+                  {truncate(content.opt_in.title, FB_LIMITS.BUTTON_TEMPLATE_TEXT) || "Souhaitez-vous recevoir nos mises à jour ?"}
+                </p>
+              </div>
+
+              {/* Facebook auto-generated opt-in button */}
+              <div className="border-t">
+                <div className="py-3 px-4 text-center text-sm font-medium text-primary border-b hover:bg-primary/5 cursor-pointer flex items-center justify-center gap-2">
+                  🔔 Recevoir le message
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center px-2">
+              Le bouton "Recevoir le message" est généré automatiquement par Facebook
+            </p>
+          </div>
+        );
+      })()}
     </div>
   );
 }
