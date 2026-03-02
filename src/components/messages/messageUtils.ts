@@ -167,29 +167,19 @@ export function generateMessengerPayload(content: MessageContent): any {
         const util = content.utility;
         const components: any[] = [];
         
-        // Header component
+        // Header component — ONLY include if the header has dynamic {{N}} variables.
+        // IMAGE/VIDEO/DOCUMENT headers are baked into the approved template at creation
+        // time, so they must NOT be re-sent at send time (Meta error 1893028).
         const headerFormat = util.header_format || (util.header_text ? 'TEXT' : 'NONE');
         if (headerFormat === 'TEXT' && util.header_text) {
           const headerParams = extractTemplateParams(util.header_text, util.example_values);
           if (headerParams.length > 0) {
             components.push({ type: "header", parameters: headerParams });
           }
-        } else if (headerFormat === 'IMAGE' && util.header_image_url) {
-          components.push({ 
-            type: "header", 
-            parameters: [{ type: "image", image: { link: util.header_image_url } }] 
-          });
-        } else if (headerFormat === 'VIDEO' && util.header_image_url) {
-          components.push({ 
-            type: "header", 
-            parameters: [{ type: "video", video: { link: util.header_image_url } }] 
-          });
-        } else if (headerFormat === 'DOCUMENT' && util.header_image_url) {
-          components.push({ 
-            type: "header", 
-            parameters: [{ type: "document", document: { link: util.header_image_url } }] 
-          });
         }
+        // NOTE: IMAGE/VIDEO/DOCUMENT headers are intentionally NOT included here.
+        // They were uploaded via Resumable Upload during template creation and are
+        // already part of the approved template on Meta's side.
         
         // Body component
         if (util.body_text) {
