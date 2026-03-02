@@ -93,16 +93,24 @@ function buildTemplateComponents(utility: UtilityContent): MetaTemplateComponent
     }
     components.push(headerComponent);
   } else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && utility.header_media_handle) {
-    // For Messenger Platform: IMAGE/VIDEO/DOCUMENT headers must NOT have a `text` field.
-    // Only provide the format + example with the media handle.
-    // (The `text` field is WhatsApp-only and causes Meta error on Messenger.)
-    components.push({
+    // For template CREATION: include the media handle so Meta stores the image.
+    // The `text` field is optional — if the user provided header text, include it.
+    const headerComp: MetaTemplateComponent = {
       type: 'HEADER',
       format: headerFormat as 'IMAGE' | 'VIDEO' | 'DOCUMENT',
       example: {
         header_handle: [utility.header_media_handle],
       },
-    });
+    };
+    // Only add text if the user provided it (some templates need it, some don't)
+    if (utility.header_text?.trim()) {
+      headerComp.text = utility.header_text.trim();
+      const headerVarCount = (utility.header_text.match(/\{\{\d+\}\}/g) || []).length;
+      if (headerVarCount > 0) {
+        headerComp.example!.header_text = ensureExamples(utility.example_values || [], headerVarCount);
+      }
+    }
+    components.push(headerComp);
   }
   // Note: IMAGE/VIDEO/DOCUMENT headers are skipped if no media handle is provided
 

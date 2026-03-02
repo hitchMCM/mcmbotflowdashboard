@@ -9,6 +9,13 @@
   status = 200
   force = true
 
+# Proxy /meta-upload to Netlify serverless function (replaces Vite dev server proxy in production)
+[[redirects]]
+  from = "/meta-upload"
+  to = "/.netlify/functions/meta-upload"
+  status = 200
+  force = true
+
 # Redirect all routes to index.html for SPA (React Router)
 [[redirects]]
   from = "/*"
