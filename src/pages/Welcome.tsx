@@ -372,6 +372,7 @@ export default function Welcome() {
                       value={messageContent} 
                       onChange={setMessageContent}
                       showQuickReplies={true}
+                      hideTypes={['utility']}
                     />
 
                     {/* Save Button */}

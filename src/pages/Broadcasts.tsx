@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useMessages } from "@/hooks/useMessages";
@@ -72,17 +72,18 @@ export default function Broadcasts() {
 
   const selectedMessage = messages.find(m => m.id === selectedId) || null;
 
-  // Sort messages by creation date (most recent first)
-  const sortedMessages = [...messages].sort((a, b) => {
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  // Sort messages by creation date (most recent first) — memoized to avoid infinite re-renders
+  const sortedMessages = useMemo(() => 
+    [...messages].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [messages]
+  );
 
   // Auto-select first message if none selected
   useEffect(() => {
     if (sortedMessages.length > 0 && !selectedId) {
       setSelectedId(sortedMessages[0].id);
     }
-  }, [sortedMessages, selectedId]);
+  }, [sortedMessages.length, selectedId]);
 
   // Load message data when selection changes
   useEffect(() => {
@@ -373,6 +374,7 @@ export default function Broadcasts() {
                       value={messageContent}
                       onChange={setMessageContent}
                       showQuickReplies={true}
+                      hideTypes={['utility']}
                     />
 
                     {/* Save Button */}

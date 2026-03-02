@@ -1,4 +1,4 @@
-import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType, ImageFullContent, OptInContent } from "@/types/messages";
+import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType, ImageFullContent, OptInContent, UtilityContent } from "@/types/messages";
 
 /**
  * Generate Facebook Messenger API JSON payload from MessageContent
@@ -156,6 +156,101 @@ export function generateMessengerPayload(content: MessageContent): any {
             template_type: "one_time_notif_req",
             title: content.opt_in.title || "Souhaitez-vous recevoir nos mises à jour ?",
             payload: content.opt_in.payload || "OPT_IN_YES"
+          }
+        };
+      }
+      break;
+
+    case 'utility':
+      // Facebook Utility Message template (supports TEXT/IMAGE/VIDEO/DOCUMENT headers, footer, multiple buttons)
+      if (content.utility) {
+        const util = content.utility;
+        const components: any[] = [];
+        
+        // Header component
+        const headerFormat = util.header_format || (util.header_text ? 'TEXT' : 'NONE');
+        if (headerFormat === 'TEXT' && util.header_text) {
+          const headerParams = extractTemplateParams(util.header_text, util.example_values);
+          if (headerParams.length > 0) {
+            components.push({ type: "header", parameters: headerParams });
+          }
+        } else if (headerFormat === 'IMAGE' && util.header_image_url) {
+          components.push({ 
+            type: "header", 
+            parameters: [{ type: "image", image: { link: util.header_image_url } }] 
+          });
+        } else if (headerFormat === 'VIDEO' && util.header_image_url) {
+          components.push({ 
+            type: "header", 
+            parameters: [{ type: "video", video: { link: util.header_image_url } }] 
+          });
+        } else if (headerFormat === 'DOCUMENT' && util.header_image_url) {
+          components.push({ 
+            type: "header", 
+            parameters: [{ type: "document", document: { link: util.header_image_url } }] 
+          });
+        }
+        
+        // Body component
+        if (util.body_text) {
+          const bodyParams = extractTemplateParams(util.body_text, util.example_values);
+          if (bodyParams.length > 0) {
+            components.push({ type: "body", parameters: bodyParams });
+          }
+        }
+        
+        // Buttons component (new multi-button support)
+        if (util.buttons && util.buttons.length > 0) {
+          util.buttons.forEach((btn, btnIdx) => {
+            if (btn.type === 'URL' && btn.url) {
+              const urlMatch = btn.url.match(/\{\{(\d+)\}\}/);
+              if (urlMatch) {
+                const idx = parseInt(urlMatch[1]) - 1;
+                components.push({
+                  type: "button",
+                  sub_type: "url",
+                  index: btnIdx.toString(),
+                  parameters: [{ type: "text", text: util.example_values?.[idx] || "" }]
+                });
+              }
+            } else if (btn.type === 'POSTBACK' && btn.payload) {
+              // POSTBACK buttons — payload may contain {{N}} params resolved at send time
+              // No additional parameters needed in the send payload for postback buttons
+            }
+          });
+        }
+        // Legacy single-button support (backward compat)
+        else if (util.button_type === 'url' && util.button_url) {
+          const urlMatch = util.button_url.match(/\{\{(\d+)\}\}/);
+          if (urlMatch) {
+            const idx = parseInt(urlMatch[1]) - 1;
+            components.push({
+              type: "button",
+              sub_type: "url",
+              index: "0",
+              parameters: [{ type: "text", text: util.example_values?.[idx] || "" }]
+            });
+          }
+        } else if (util.button_type === 'postback' && util.button_payload) {
+          const payloadMatch = util.button_payload.match(/\{\{(\d+)\}\}/);
+          if (payloadMatch) {
+            const idx = parseInt(payloadMatch[1]) - 1;
+            components.push({
+              type: "button",
+              sub_type: "quick_reply",
+              index: "0",
+              parameters: [{ type: "payload", payload: util.example_values?.[idx] || "" }]
+            });
+          }
+        }
+
+        // Build the utility payload
+        payload.messaging_type = "UTILITY";
+        payload.message = {
+          template: {
+            name: util.template_name,
+            language: { code: util.language || "en" },
+            ...(components.length > 0 ? { components } : {})
           }
         };
       }
@@ -331,6 +426,47 @@ export function parseMessengerPayload(json: any): MessageContent {
       }));
       return content;
     }
+
+    if (payload.template_type === "one_time_notif_req") {
+      content.message_type = 'opt_in';
+      content.opt_in = {
+        title: payload.title || "",
+        payload: payload.payload || "OPT_IN_YES"
+      };
+      return content;
+    }
+  }
+
+  // Utility message (has message.template instead of message.attachment)
+  if (msg.template?.name) {
+    content.message_type = 'utility';
+    content.utility = {
+      template_name: msg.template.name,
+      language: msg.template.language?.code || 'en',
+      header_format: 'NONE',
+      header_text: '',
+      body_text: '',
+      footer_text: '',
+      buttons: [],
+      button_type: null,
+      button_text: '',
+      button_url: '',
+      button_payload: '',
+      example_values: []
+    };
+    // Extract example values from components
+    if (msg.template.components) {
+      for (const comp of msg.template.components) {
+        if (comp.parameters) {
+          for (const param of comp.parameters) {
+            if (param.type === 'text' && param.text) {
+              content.utility.example_values.push(param.text);
+            }
+          }
+        }
+      }
+    }
+    return content;
   }
 
   return content;
@@ -347,6 +483,23 @@ function parseButton(btn: any): MessageButton {
 }
 
 /**
+ * Extract template parameters from text with {{1}}, {{2}} placeholders
+ * Returns array of parameter objects for the Facebook API
+ */
+function extractTemplateParams(text: string, exampleValues: string[] = []): any[] {
+  const matches = text.match(/\{\{(\d+)\}\}/g);
+  if (!matches) return [];
+  
+  // Get unique sorted variable numbers
+  const varNums = [...new Set(matches.map(m => parseInt(m.replace(/[{}]/g, ''))))].sort((a, b) => a - b);
+  
+  return varNums.map(num => ({
+    type: "text",
+    text: exampleValues[num - 1] || ""
+  }));
+}
+
+/**
  * Convert old format (from database) to MessageContent
  */
 export function convertLegacyToMessageContent(data: {
@@ -359,7 +512,22 @@ export function convertLegacyToMessageContent(data: {
 }): MessageContent {
   // Check for embedded _message_content (new format)
   if (data.messenger_payload?._message_content?.message_type) {
-    return data.messenger_payload._message_content as MessageContent;
+    const stored = data.messenger_payload._message_content as MessageContent;
+    // Ensure utility messages always have a utility object with defaults
+    if (stored.message_type === 'utility' && !stored.utility) {
+      stored.utility = {
+        template_name: '',
+        language: 'en',
+        header_format: 'NONE',
+        header_text: '',
+        header_image_url: '',
+        body_text: '',
+        footer_text: '',
+        buttons: [],
+        example_values: [],
+      };
+    }
+    return stored;
   }
   
   // If we have messenger_payload with the new format directly, parse it
@@ -459,6 +627,16 @@ export function convertMessageContentToLegacy(content: MessageContent): {
         legacy.buttons = [];
       }
       break;
+
+    case 'utility':
+      if (content.utility) {
+        legacy.text_content = content.utility.body_text || null;
+        legacy.title = content.utility.template_name || null;
+        legacy.subtitle = content.utility.header_text || null;
+        legacy.image_url = content.utility.header_image_url || null;
+        legacy.buttons = [];
+      }
+      break;
   }
 
   return legacy;
@@ -483,6 +661,8 @@ export function getMessagePreviewText(content: MessageContent): string {
       return content.image_full?.text?.substring(0, 50) || "Full image message";
     case 'opt_in':
       return content.opt_in?.title?.substring(0, 50) || "Opt-in message";
+    case 'utility':
+      return `[Utility] ${content.utility?.template_name || 'template'}: ${content.utility?.body_text?.substring(0, 40) || ''}`;
     default:
       return "Message";
   }

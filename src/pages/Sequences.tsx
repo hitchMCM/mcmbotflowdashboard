@@ -406,6 +406,7 @@ export default function Sequences() {
                       value={messageContent} 
                       onChange={setMessageContent}
                       showQuickReplies={true}
+                      hideTypes={['utility']}
                     />
 
                     {/* Save Button */}

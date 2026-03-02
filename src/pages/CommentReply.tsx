@@ -432,6 +432,7 @@ export default function CommentReply() {
                       value={messageContent}
                       onChange={setMessageContent}
                       showQuickReplies={true}
+                      hideTypes={['utility']}
                     />
 
                     {/* Save Button */}

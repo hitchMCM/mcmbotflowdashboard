@@ -21,6 +21,7 @@ import {
   Megaphone,
   Shield,
   CalendarClock,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -41,6 +42,7 @@ const navigation = [
   { name: "Comment Reply", href: "/comment-reply", icon: MessageCircle },
   { name: "Standard Reply", href: "/responses", icon: Zap },
   { name: "Sequences", href: "/sequences", icon: Clock },
+  { name: "Utility Messages", href: "/utility-messages", icon: FileText },
   { name: "Broadcasts", href: "/broadcasts", icon: Megaphone },
   { name: "Analytics", href: "/analytics", icon: TrendingUp },
   { name: "Settings", href: "/settings", icon: Settings },

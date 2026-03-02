@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { 
   Plus, Trash2, X, Image, Type, MousePointer, 
-  MessageSquare, Layout, Film, ChevronLeft, ChevronRight, Zap, GripVertical, AlertTriangle, Link, UserCheck
+  MessageSquare, Layout, Film, ChevronLeft, ChevronRight, Zap, GripVertical, AlertTriangle, Link, UserCheck,
+  Send, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,8 +32,13 @@ import {
   MessageContent,
   ImageFullContent,
   OptInContent,
+  UtilityContent,
+  UtilityButton,
+  UtilityHeaderFormat,
   FACEBOOK_MESSAGE_TYPE_LABELS,
 } from "@/types/messages";
+import { UtilityTemplateStatusPanel } from "@/components/messages/UtilityTemplateStatus";
+import { UtilityTemplateStatus as UtilityStatusType } from "@/hooks/useUtilityTemplates";
 
 // Facebook Messenger Character Limits
 export const FB_LIMITS = {
@@ -68,6 +74,18 @@ interface MessageEditorProps {
   value: MessageContent;
   onChange: (content: MessageContent) => void;
   showQuickReplies?: boolean;
+  /** Hide specific message types from the type selector */
+  hideTypes?: FacebookMessageType[];
+  /** Hide the entire type selector section */
+  hideTypeSelector?: boolean;
+  // Utility template submission props (optional)
+  utilityTemplateStatus?: UtilityStatusType | null;
+  utilityTemplateId?: string | null;
+  utilityRejectionReason?: string | null;
+  onSubmitToMeta?: () => void;
+  onRefreshUtilityStatus?: () => void;
+  utilitySubmitting?: boolean;
+  utilityRefreshing?: boolean;
 }
 
 const defaultElement: TemplateElement = {
@@ -100,7 +118,32 @@ const defaultOptIn: OptInContent = {
   payload: "OPT_IN_YES",
 };
 
-export function MessageEditor({ value, onChange, showQuickReplies = true }: MessageEditorProps) {
+const defaultUtility: UtilityContent = {
+  template_name: "",
+  language: "en",
+  header_format: "NONE",
+  header_text: "",
+  header_image_url: "",
+  body_text: "Your order #{{1}} is on its way!",
+  footer_text: "",
+  buttons: [],
+  example_values: ["566701"],
+};
+
+export function MessageEditor({ 
+  value, 
+  onChange, 
+  showQuickReplies = true,
+  hideTypes = [],
+  hideTypeSelector = false,
+  utilityTemplateStatus,
+  utilityTemplateId,
+  utilityRejectionReason,
+  onSubmitToMeta,
+  onRefreshUtilityStatus,
+  utilitySubmitting,
+  utilityRefreshing,
+}: MessageEditorProps) {
   const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   
   const messageType = value.message_type;
@@ -140,6 +183,9 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
         break;
       case 'opt_in':
         newContent.opt_in = value.opt_in || { ...defaultOptIn };
+        break;
+      case 'utility':
+        newContent.utility = value.utility || { ...defaultUtility };
         break;
     }
     
@@ -287,15 +333,67 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
     });
   };
 
+  // Utility management
+  const updateUtility = (updates: Partial<UtilityContent>) => {
+    const current = value.utility || defaultUtility;
+    const updated = { ...current, ...updates };
+    // Auto-detect variable count from all text fields including button URLs
+    const buttonTexts = (updated.buttons || []).map(b => (b.url || '') + ' ' + (b.payload || '')).join(' ');
+    const allText = (updated.header_text || '') + ' ' + (updated.body_text || '') + ' ' + buttonTexts + ' ' + (updated.button_url || '') + ' ' + (updated.button_payload || '');
+    const matches = allText.match(/\{\{(\d+)\}\}/g);
+    const maxVar = matches ? Math.max(...matches.map(m => parseInt(m.replace(/[{}]/g, '')))) : 0;
+    // Adjust example_values array size
+    while (updated.example_values.length < maxVar) {
+      updated.example_values.push('');
+    }
+    if (maxVar > 0 && updated.example_values.length > maxVar) {
+      updated.example_values = updated.example_values.slice(0, maxVar);
+    }
+    // Keep param_labels in sync
+    const labels = updated.param_labels || [];
+    while (labels.length < maxVar) {
+      labels.push('');
+    }
+    if (maxVar > 0 && labels.length > maxVar) {
+      updated.param_labels = labels.slice(0, maxVar);
+    } else {
+      updated.param_labels = labels;
+    }
+    onChange({ ...value, utility: updated });
+  };
+
+  // Utility button management
+  const addUtilityButton = () => {
+    const current = value.utility || defaultUtility;
+    if ((current.buttons || []).length >= 10) return;
+    const newBtn: UtilityButton = { type: 'URL', text: '', url: '' };
+    updateUtility({ buttons: [...(current.buttons || []), newBtn] });
+  };
+
+  const updateUtilityButton = (index: number, updates: Partial<UtilityButton>) => {
+    const current = value.utility || defaultUtility;
+    const btns = [...(current.buttons || [])];
+    btns[index] = { ...btns[index], ...updates };
+    updateUtility({ buttons: btns });
+  };
+
+  const removeUtilityButton = (index: number) => {
+    const current = value.utility || defaultUtility;
+    const btns = (current.buttons || []).filter((_, i) => i !== index);
+    updateUtility({ buttons: btns });
+  };
+
   // Get current element for generic/button/carousel
   const currentElement = value.elements?.[messageType === 'carousel' ? activeCarouselIndex : 0];
 
   return (
     <div className="space-y-4">
       {/* Message Type Selector */}
+      {!hideTypeSelector && (
       <div className="space-y-2">
         <Label>Type de Message Facebook</Label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {!hideTypes.includes('text') && (
           <Button
             variant={messageType === 'text' ? 'default' : 'outline'}
             size="sm"
@@ -305,6 +403,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Type className="h-4 w-4 mr-2" />
             Texte
           </Button>
+          )}
+          {!hideTypes.includes('generic') && (
           <Button
             variant={messageType === 'generic' ? 'default' : 'outline'}
             size="sm"
@@ -314,6 +414,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Layout className="h-4 w-4 mr-2" />
             Carte
           </Button>
+          )}
+          {!hideTypes.includes('button') && (
           <Button
             variant={messageType === 'button' ? 'default' : 'outline'}
             size="sm"
@@ -323,6 +425,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <MousePointer className="h-4 w-4 mr-2" />
             Boutons
           </Button>
+          )}
+          {!hideTypes.includes('media') && (
           <Button
             variant={messageType === 'media' ? 'default' : 'outline'}
             size="sm"
@@ -332,6 +436,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Film className="h-4 w-4 mr-2" />
             Média
           </Button>
+          )}
+          {!hideTypes.includes('carousel') && (
           <Button
             variant={messageType === 'carousel' ? 'default' : 'outline'}
             size="sm"
@@ -341,6 +447,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Image className="h-4 w-4 mr-2" />
             Carrousel
           </Button>
+          )}
+          {!hideTypes.includes('quick_replies') && (
           <Button
             variant={messageType === 'quick_replies' ? 'default' : 'outline'}
             size="sm"
@@ -350,6 +458,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Zap className="h-4 w-4 mr-2" />
             Quick Replies
           </Button>
+          )}
+          {!hideTypes.includes('image_full') && (
           <Button
             variant={messageType === 'image_full' ? 'default' : 'outline'}
             size="sm"
@@ -359,6 +469,8 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <Image className="h-4 w-4 mr-2" />
             Image Complète
           </Button>
+          )}
+          {!hideTypes.includes('opt_in') && (
           <Button
             variant={messageType === 'opt_in' ? 'default' : 'outline'}
             size="sm"
@@ -368,10 +480,23 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
             <UserCheck className="h-4 w-4 mr-2" />
             Opt-in
           </Button>
+          )}
+          {!hideTypes.includes('utility') && (
+          <Button
+            variant={messageType === 'utility' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMessageType('utility')}
+            className="justify-start col-span-2 sm:col-span-1 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30"
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Utility
+          </Button>
+          )}
         </div>
       </div>
+      )}
 
-      <Separator />
+      {!hideTypeSelector && <Separator />}
 
       {/* Text Message Editor */}
       {messageType === 'text' && (
@@ -949,6 +1074,322 @@ export function MessageEditor({ value, onChange, showQuickReplies = true }: Mess
               Identifiant envoyé à votre webhook quand l'utilisateur accepte la notification.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Utility Message Editor (template-based) */}
+      {messageType === 'utility' && (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-lg p-3">
+            <p className="text-sm text-blue-400">
+              <strong>Utility Message</strong> — Pre-approved Meta template for utility messages 
+              (confirmations, tracking, reminders, alerts). Sendable <strong>outside the 24h window</strong> without opt-in.
+            </p>
+          </div>
+
+          {/* Template Name */}
+          <div className="space-y-2">
+            <Label>Template Name *</Label>
+            <Input
+              placeholder="order_delivery_update"
+              value={value.utility?.template_name || ""}
+              onChange={(e) => updateUtility({ template_name: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Exact template name registered on your Page (lowercase letters, numbers and underscores only).
+            </p>
+          </div>
+
+          {/* Language */}
+          <div className="space-y-2">
+            <Label>Template Language</Label>
+            <Select
+              value={value.utility?.language || "en"}
+              onValueChange={(val) => updateUtility({ language: val })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English (en)</SelectItem>
+                <SelectItem value="en_US">English US (en_US)</SelectItem>
+                <SelectItem value="fr">Français (fr)</SelectItem>
+                <SelectItem value="fr_FR">Français FR (fr_FR)</SelectItem>
+                <SelectItem value="es">Español (es)</SelectItem>
+                <SelectItem value="pt_BR">Português BR (pt_BR)</SelectItem>
+                <SelectItem value="ar">العربية (ar)</SelectItem>
+                <SelectItem value="ht">Kreyòl Ayisyen (ht)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          {/* Header Section */}
+          <div className="space-y-3">
+            <Label className="text-base font-semibold">Header (optional)</Label>
+            <div className="flex flex-wrap gap-2">
+              {(['NONE', 'TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT'] as UtilityHeaderFormat[]).map((fmt) => (
+                <Button
+                  key={fmt}
+                  variant={(value.utility?.header_format || 'NONE') === fmt ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => updateUtility({ header_format: fmt, header_text: value.utility?.header_text || '', header_image_url: ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(fmt) ? (value.utility?.header_image_url || '') : '' })}
+                  className={cn(
+                    "text-xs",
+                    (value.utility?.header_format || 'NONE') === fmt && "bg-blue-500 hover:bg-blue-600"
+                  )}
+                >
+                  {fmt === 'NONE' ? '🚫 None' : fmt === 'TEXT' ? '📝 Text' : fmt === 'IMAGE' ? '🖼️ Image' : fmt === 'VIDEO' ? '🎬 Video' : '📄 Document'}
+                </Button>
+              ))}
+            </div>
+
+            {/* Header: TEXT */}
+            {value.utility?.header_format === 'TEXT' && (
+              <div className="space-y-2 pl-4 border-l-2 border-blue-500/30">
+                <Label>Header text (max 60 characters, 1 variable max)</Label>
+                <Input
+                  placeholder="{{1}} Update"
+                  value={value.utility?.header_text || ""}
+                  onChange={(e) => updateUtility({ header_text: e.target.value })}
+                  maxLength={60}
+                />
+                <CharCount current={value.utility?.header_text?.length || 0} max={60} />
+              </div>
+            )}
+
+            {/* Header: IMAGE */}
+            {value.utility?.header_format === 'IMAGE' && (
+              <div className="space-y-2 pl-4 border-l-2 border-blue-500/30">
+                <Label>Header text (required with image, max 60 chars)</Label>
+                <Input
+                  placeholder="{{1}} Update"
+                  value={value.utility?.header_text || ""}
+                  onChange={(e) => updateUtility({ header_text: e.target.value })}
+                  maxLength={60}
+                />
+                <CharCount current={value.utility?.header_text?.length || 0} max={60} />
+                <Label className="mt-2">Header image</Label>
+                <ImageUpload 
+                  value={value.utility?.header_image_url || ""}
+                  onChange={(url) => updateUtility({ header_image_url: url })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The image will be automatically uploaded to Meta on submission. Recommended: 820x312px, JPG/PNG.
+                </p>
+              </div>
+            )}
+
+            {/* Header: VIDEO */}
+            {value.utility?.header_format === 'VIDEO' && (
+              <div className="space-y-2 pl-4 border-l-2 border-blue-500/30">
+                <Label>Video URL</Label>
+                <Input
+                  placeholder="https://example.com/video.mp4"
+                  value={value.utility?.header_image_url || ""}
+                  onChange={(e) => updateUtility({ header_image_url: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The video will be displayed at the top of the message. Max 16MB, MP4 recommended.
+                </p>
+              </div>
+            )}
+
+            {/* Header: DOCUMENT */}
+            {value.utility?.header_format === 'DOCUMENT' && (
+              <div className="space-y-2 pl-4 border-l-2 border-blue-500/30">
+                <Label>Document URL</Label>
+                <Input
+                  placeholder="https://example.com/invoice.pdf"
+                  value={value.utility?.header_image_url || ""}
+                  onChange={(e) => updateUtility({ header_image_url: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The document (PDF, etc.) will be attached to the message. Max 100MB.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Body Text */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-semibold">Body *</Label>
+              <CharCount current={value.utility?.body_text?.length || 0} max={1024} />
+            </div>
+            <TagAutocompleteTextarea
+              placeholder="Great news! Your order #{{1}} is on its way. Thank you {{2}}! (type {{ for tags)"
+              value={value.utility?.body_text || ""}
+              onChange={(e) => updateUtility({ body_text: e.target.value })}
+              className={cn("min-h-24", (value.utility?.body_text?.length || 0) > 1024 && "border-destructive")}
+              maxLength={1024}
+            />
+          </div>
+
+          {/* Footer (optionnel) — NOT sent to Meta (Messenger doesn't support FOOTER) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Footer (optional — local only)</Label>
+              <CharCount current={value.utility?.footer_text?.length || 0} max={60} />
+            </div>
+            <Input
+              placeholder="Tap buttons below to manage your order"
+              value={value.utility?.footer_text || ""}
+              onChange={(e) => updateUtility({ footer_text: e.target.value })}
+              maxLength={60}
+            />
+            <p className="text-xs text-yellow-400">
+              ⚠️ The Footer is <strong>not sent to Meta</strong> (not supported by Messenger). It is stored locally for reference.
+            </p>
+          </div>
+
+          <Separator />
+
+          {/* Buttons Section (up to 10) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-semibold">Buttons ({(value.utility?.buttons || []).length}/10)</Label>
+              {(value.utility?.buttons || []).length < 10 && (
+                <Button variant="outline" size="sm" onClick={addUtilityButton} className="gap-1">
+                  <Plus className="h-3 w-3" />
+                  Add
+                </Button>
+              )}
+            </div>
+
+            {(value.utility?.buttons || []).length === 0 && (
+              <p className="text-xs text-muted-foreground italic">
+                No buttons. Click "Add" to add a URL, Quick Reply, Call, or Code button.
+              </p>
+            )}
+
+            {(value.utility?.buttons || []).map((btn, idx) => (
+              <div key={idx} className="p-3 border rounded-lg space-y-3 bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-xs text-blue-400 border-blue-500/30">
+                    Button {idx + 1}
+                  </Badge>
+                  <Button variant="ghost" size="sm" onClick={() => removeUtilityButton(idx)} className="h-6 w-6 p-0 text-destructive hover:text-destructive">
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+
+                {/* Button Type */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Type</Label>
+                    <Select
+                      value={btn.type}
+                      onValueChange={(val) => updateUtilityButton(idx, { type: val as UtilityButton['type'] })}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="URL">🔗 URL</SelectItem>
+                        <SelectItem value="POSTBACK">↩️ Postback</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Button text (max 25 chars)</Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder={btn.type === 'URL' ? 'Track my order' : 'Confirm'}
+                      value={btn.text}
+                      onChange={(e) => updateUtilityButton(idx, { text: e.target.value })}
+                      maxLength={25}
+                    />
+                  </div>
+                </div>
+
+                {/* Type-specific fields */}
+                {btn.type === 'URL' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">URL (can include {"{{1}}"})</Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="https://example.com/orders/{{1}}"
+                      value={btn.url || ""}
+                      onChange={(e) => updateUtilityButton(idx, { url: e.target.value })}
+                    />
+                  </div>
+                )}
+                {btn.type === 'POSTBACK' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Payload (can include {"{{N}}"})</Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="order_id_{{2}}"
+                      value={btn.payload || ""}
+                      onChange={(e) => updateUtilityButton(idx, { payload: e.target.value })}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <Separator />
+
+          {/* Example Values & Parameter Labels */}
+          {(value.utility?.example_values?.length || 0) > 0 && (
+            <div className="space-y-2">
+              <Label>Variables: labels & examples</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Choose which subscriber field corresponds to each variable. The example is sent to Meta for validation.
+                The <strong>label</strong> will be used by the backend (n8n) to know which data to inject.
+              </p>
+              <div className="grid gap-3">
+                {value.utility?.example_values?.map((val, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-blue-400 border-blue-500/30 shrink-0 min-w-[50px] justify-center">
+                      {`{{${idx + 1}}}`}
+                    </Badge>
+                    <select
+                      aria-label={`Field for variable {{${idx + 1}}}`}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]"
+                      value={value.utility?.param_labels?.[idx] || ''}
+                      onChange={(e) => {
+                        const newLabels = [...(value.utility?.param_labels || [])];
+                        while (newLabels.length <= idx) newLabels.push('');
+                        newLabels[idx] = e.target.value;
+                        updateUtility({ param_labels: newLabels });
+                      }}
+                    >
+                      <option value="">— Field —</option>
+                      <option value="first_name">First Name (first_name)</option>
+                      <option value="last_name">Last Name (last_name)</option>
+                      <option value="full_name">Full Name (full_name)</option>
+                      <option value="email">Email</option>
+                      <option value="phone">Phone</option>
+                      <option value="order_id">Order # (order_id)</option>
+                      <option value="tracking_url">Tracking Link (tracking_url)</option>
+                      <option value="amount">Amount (amount)</option>
+                      <option value="date">Date</option>
+                      <option value="time">Time</option>
+                      <option value="address">Address</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <Input
+                      placeholder={`Example value for {{${idx + 1}}}`}
+                      value={val}
+                      onChange={(e) => {
+                        const newValues = [...(value.utility?.example_values || [])];
+                        newValues[idx] = e.target.value;
+                        updateUtility({ example_values: newValues });
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

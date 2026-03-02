@@ -194,6 +194,7 @@ class PostgrestQueryBuilder implements PromiseLike<QueryResult> {
       if (this.insertData) {
         options.method = 'POST';
         options.body = JSON.stringify(this.insertData);
+        console.log('[client.ts] INSERT request:', url, 'body keys:', Object.keys(this.insertData));
         // Add select fields to URL if specified
         if (this.selectFields !== '*') {
           url += `?select=${encodeURIComponent(this.selectFields)}`;
@@ -225,6 +226,7 @@ class PostgrestQueryBuilder implements PromiseLike<QueryResult> {
       
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: response.statusText }));
+        console.error(`[client.ts] ${options.method} ${url} → ${response.status}`, error);
         return { data: null, error, count: 0 };
       }
 

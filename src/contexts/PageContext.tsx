@@ -106,7 +106,8 @@ export function PageProvider({ children }: { children: ReactNode }) {
         avatar_url: row.avatar_url,
         is_active: row.is_active ?? true,
         subscribers_count: row.subscribers_count || 0,
-        access_token: row.access_token,
+        // The DB column is access_token_webhook, not access_token
+        access_token: row.access_token_webhook || row.access_token,
         user_id: row.user_id
       }));
       

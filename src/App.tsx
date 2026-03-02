@@ -29,6 +29,7 @@ import NotFound from "./pages/NotFound";
 import Register from "./pages/Register";
 import Admin from "./pages/Admin";
 import AutoPost from "./pages/AutoPost";
+import UtilityMessages from "./pages/UtilityMessages";
 
 console.log('[App] Loading application...');
 
@@ -71,6 +72,7 @@ const App = () => (
             <Route path="/comment-reply" element={<ProtectedWithPage><CommentReply /></ProtectedWithPage>} />
             <Route path="/responses" element={<ProtectedWithPage><Responses /></ProtectedWithPage>} />
             <Route path="/sequences" element={<ProtectedWithPage><Sequences /></ProtectedWithPage>} />
+            <Route path="/utility-messages" element={<ProtectedWithPage><UtilityMessages /></ProtectedWithPage>} />
             <Route path="/broadcasts" element={<ProtectedWithPage><Broadcasts /></ProtectedWithPage>} />
             <Route path="/configuration" element={<ProtectedWithPage><Configuration /></ProtectedWithPage>} />
             <Route path="/settings" element={<ProtectedWithPage><Settings /></ProtectedWithPage>} />

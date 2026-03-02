@@ -4,7 +4,7 @@
 // =====================================================================================
 
 // 5 categories: Welcome, Standard Reply (response), Sequence, Broadcast, Comment Reply
-export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast' | 'comment_reply';
+export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast' | 'comment_reply' | 'utility';
 export type SelectionMode = 'random' | 'fixed';
 export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 
@@ -12,7 +12,7 @@ export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 // FACEBOOK MESSAGE TYPES
 // =====================================================================================
 
-// 8 Facebook message types supported
+// 9 Facebook message types supported
 export type FacebookMessageType = 
   | 'text'           // Simple text message
   | 'generic'        // Generic template (card with image, title, subtitle, buttons)
@@ -21,7 +21,8 @@ export type FacebookMessageType =
   | 'carousel'       // Multiple generic cards (up to 10)
   | 'quick_replies'  // Message with quick reply buttons
   | 'image_full'     // Full image (not cropped) + text + buttons (sends 2 messages)
-  | 'opt_in';        // Opt-in message with accept/decline buttons
+  | 'opt_in'         // Opt-in message (one_time_notif_req)
+  | 'utility';       // Utility message template (order updates, appointments, etc.)
 
 // Button types for Facebook
 export interface MessageButton {
@@ -74,6 +75,66 @@ export interface OptInContent {
   payload: string;
 }
 
+// Utility message template parameter
+export interface UtilityTemplateParam {
+  type: 'text' | 'image';
+  text?: string;
+  image_url?: string;
+}
+
+// Utility message component (header, body, buttons)
+export interface UtilityTemplateComponent {
+  type: 'header' | 'body' | 'buttons';
+  parameters: UtilityTemplateParam[];
+}
+
+// Header format for utility templates (Meta supports TEXT, IMAGE, VIDEO, DOCUMENT, LOCATION)
+export type UtilityHeaderFormat = 'NONE' | 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+
+// Utility template button — Messenger Platform supports URL and POSTBACK only
+// (PHONE_NUMBER, QUICK_REPLY, COPY_CODE are WhatsApp-only)
+export interface UtilityButton {
+  type: 'URL' | 'POSTBACK';
+  text: string;
+  url?: string;               // For URL buttons (supports trailing {{1}})
+  payload?: string;           // For POSTBACK buttons (can include {{N}} params)
+  example?: string;           // Example value for URL suffix or POSTBACK payload
+}
+
+// Utility message content (for utility type - pre-approved template messages)
+export interface UtilityContent {
+  template_name: string;
+  language: string;
+  
+  // Header (optional)
+  header_format?: UtilityHeaderFormat;  // Default: 'NONE'
+  header_text?: string;                 // For TEXT headers (max 60 chars, 1 param)
+  header_image_url?: string;            // For IMAGE headers (preview URL)
+  header_media_handle?: string;         // Meta Resumable Upload handle for submission
+  
+  // Body (required, max 1024 chars, multiple params)
+  body_text: string;
+  
+  // Footer (optional, max 60 chars, NO params)
+  footer_text?: string;
+  
+  // Buttons (optional, up to 10)
+  buttons: UtilityButton[];
+  
+  // Example values for positional params {{1}}, {{2}}, ...
+  example_values: string[];
+  
+  // Labels mapping each param to a subscriber field (for backend/n8n)
+  // e.g. ['first_name', 'order_id', 'tracking_url']
+  param_labels?: string[];
+  
+  // Legacy single-button fields (backward compat)
+  button_type?: 'url' | 'postback' | null;
+  button_text?: string;
+  button_url?: string;
+  button_payload?: string;
+}
+
 // Complete message content structure
 export interface MessageContent {
   message_type: FacebookMessageType;
@@ -93,33 +154,37 @@ export interface MessageContent {
   // For opt_in type
   opt_in?: OptInContent;
   
+  // For utility type (template-based messages)
+  utility?: UtilityContent;
+  
   // For quick replies (can be added to any message type)
   quick_replies?: QuickReply[];
 }
 
 // Facebook Message Type Labels
 export const FACEBOOK_MESSAGE_TYPE_LABELS: Record<FacebookMessageType, string> = {
-  text: 'Texte Simple',
-  generic: 'Carte (Generic)',
-  button: 'Boutons (Button)',
-  media: 'Média (Image/Vidéo)',
-  carousel: 'Carrousel',
+  text: 'Simple Text',
+  generic: 'Card (Generic)',
+  button: 'Buttons (Button)',
+  media: 'Media (Image/Video)',
+  carousel: 'Carousel',
   quick_replies: 'Quick Replies',
-  image_full: 'Image Complète + Texte',
+  image_full: 'Full Image + Text',
   opt_in: 'Opt-in',
+  utility: 'Utility',
 };
 
 // Facebook Message Type Descriptions
 export const FACEBOOK_MESSAGE_TYPE_DESCRIPTIONS: Record<FacebookMessageType, string> = {
-  text: 'Message texte simple sans mise en forme',
-  generic: 'Carte avec image, titre, sous-titre et boutons',
-  button: 'Texte avec boutons (sans image)',
-  media: 'Image ou vidéo avec un bouton optionnel',
-  carousel: 'Plusieurs cartes défilables horizontalement (max 10)',
-  quick_replies: 'Boutons de réponse rapide qui disparaissent après clic',
-  image_full: 'Image en plein format (9:16, portrait) + texte + boutons. Envoie 2 messages séquentiels.',
-  opt_in: 'Demande de notification unique (one_time_notif_req). L\'utilisateur peut accepter ou refuser.',
-  // opt_in uses Facebook\'s one_time_notif_req template_type
+  text: 'Simple text message without formatting',
+  generic: 'Card with image, title, subtitle and buttons',
+  button: 'Text with buttons (no image)',
+  media: 'Image or video with an optional button',
+  carousel: 'Multiple horizontally scrollable cards (max 10)',
+  quick_replies: 'Quick reply buttons that disappear after click',
+  image_full: 'Full format image (9:16, portrait) + text + buttons. Sends 2 sequential messages.',
+  opt_in: 'One-time notification request (one_time_notif_req). User can accept or decline.',
+  utility: 'Pre-approved utility message (orders, appointments, accounts). Sendable outside 24h window without opt-in.',
 };
 
 // =====================================================================================
@@ -156,6 +221,15 @@ export interface Message {
   // User ownership
   user_id: string | null;
   
+  // Utility template fields (Meta API)
+  is_utility_message: boolean;
+  utility_template_id: string | null;
+  utility_template_name: string | null;
+  utility_template_status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED' | 'DISABLED' | null;
+  utility_template_params: Record<string, string> | null;
+  utility_template_language: string | null;
+  utility_rejection_reason: string | null;
+  
   // Statistics
   sent_count: number;
   delivered_count: number;
@@ -187,6 +261,15 @@ export interface MessageInsert {
   is_active?: boolean;
   is_global?: boolean;
   user_id?: string;
+  
+  // Utility template fields
+  is_utility_message?: boolean;
+  utility_template_id?: string | null;
+  utility_template_name?: string | null;
+  utility_template_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED' | 'DISABLED' | null;
+  utility_template_params?: Record<string, string> | null;
+  utility_template_language?: string | null;
+  utility_rejection_reason?: string | null;
 }
 
 export interface MessageUpdate extends Partial<MessageInsert> {}
@@ -320,6 +403,7 @@ export const CATEGORY_LABELS: Record<MessageCategory, string> = {
   sequence: 'Sequences',
   broadcast: 'Broadcasts',
   comment_reply: 'Comment Reply',
+  utility: 'Utility Messages',
 };
 
 // Category descriptions
@@ -329,6 +413,7 @@ export const CATEGORY_DESCRIPTIONS: Record<MessageCategory, string> = {
   sequence: 'Scheduled follow-up messages',
   broadcast: 'One-time or scheduled mass messages',
   comment_reply: 'Auto-replies to Facebook comments',
+  utility: 'Utility templates sent outside the 24h window',
 };
 
 // Selection mode labels

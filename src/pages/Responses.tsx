@@ -439,6 +439,7 @@ export default function Responses() {
                       value={messageContent}
                       onChange={setMessageContent}
                       showQuickReplies={true}
+                      hideTypes={['utility']}
                     />
 
                     {/* Save Button */}

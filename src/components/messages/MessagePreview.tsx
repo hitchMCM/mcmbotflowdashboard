@@ -530,6 +530,124 @@ export function MessagePreview({ content, className }: MessagePreviewProps) {
           </div>
         );
       })()}
+
+      {/* Utility Message Preview */}
+      {message_type === 'utility' && content.utility && (() => {
+        const util = content.utility;
+        // Replace {{1}}, {{2}}, etc. with example values
+        const replaceVars = (text: string | undefined): string => {
+          if (!text) return '';
+          return text.replace(/\{\{(\d+)\}\}/g, (match, num) => {
+            const idx = parseInt(num) - 1;
+            return util.example_values?.[idx] || match;
+          });
+        };
+        const headerFormat = util.header_format || (util.header_text ? 'TEXT' : 'NONE');
+        const headerPreview = headerFormat === 'TEXT' ? replaceVars(util.header_text) : '';
+        const bodyPreview = replaceVars(util.body_text);
+        const bodyOver = isOverLimit(util.body_text, 1024);
+        const hasNewButtons = util.buttons && util.buttons.length > 0;
+        const hasLegacyButton = util.button_type && util.button_text;
+
+        return (
+          <div className="space-y-2">
+            <div className="bg-muted rounded-2xl overflow-hidden shadow-lg">
+              {/* Utility badge */}
+              <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 px-3 py-1.5 flex items-center gap-1.5">
+                <span className="text-xs font-medium text-blue-400">⚡ UTILITY</span>
+                <span className="text-xs text-muted-foreground">— {util.template_name || 'template_name'}</span>
+              </div>
+
+              {/* Header: IMAGE */}
+              {headerFormat === 'IMAGE' && util.header_image_url && (
+                <div className="w-full">
+                  <img 
+                    src={util.header_image_url} 
+                    alt="Header" 
+                    className="w-full h-40 object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
+
+              {/* Header: VIDEO */}
+              {headerFormat === 'VIDEO' && util.header_image_url && (
+                <div className="w-full bg-black/20 h-40 flex items-center justify-center">
+                  <span className="text-muted-foreground text-sm">🎬 Video header</span>
+                </div>
+              )}
+
+              {/* Header: DOCUMENT */}
+              {headerFormat === 'DOCUMENT' && util.header_image_url && (
+                <div className="w-full bg-black/10 px-4 py-3 flex items-center gap-2">
+                  <span className="text-lg">📄</span>
+                  <span className="text-sm text-muted-foreground truncate">{util.header_image_url.split('/').pop() || 'document'}</span>
+                </div>
+              )}
+
+              {/* Header: TEXT */}
+              {headerPreview && (
+                <div className="px-4 pt-3">
+                  <p className="font-semibold text-sm">{headerPreview}</p>
+                </div>
+              )}
+
+              {/* Body */}
+              <div className="p-4 pt-2">
+                {bodyOver && (
+                  <p className="text-xs text-destructive mb-2 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Body trop long ({util.body_text?.length}/1024)
+                  </p>
+                )}
+                <p className={cn(
+                  "whitespace-pre-line text-sm",
+                  bodyOver && "text-destructive"
+                )}>
+                  {bodyPreview || "Texte du message..."}
+                </p>
+              </div>
+
+              {/* Footer */}
+              {util.footer_text && (
+                <div className="px-4 pb-2">
+                  <p className="text-xs text-muted-foreground">{util.footer_text}</p>
+                </div>
+              )}
+
+              {/* New multi-buttons */}
+              {hasNewButtons && (
+                <div className="border-t divide-y">
+                  {util.buttons.map((btn, idx) => (
+                    <div key={idx} className="py-2.5 px-4 text-center text-sm font-medium text-primary hover:bg-primary/5 cursor-pointer flex items-center justify-center gap-2">
+                      {btn.type === 'URL' && <ExternalLink className="h-3 w-3" />}
+                      {btn.type === 'POSTBACK' && <span className="text-xs">↩️</span>}
+                      {btn.text || `Button ${idx + 1}`}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Legacy single button (backward compat) */}
+              {!hasNewButtons && hasLegacyButton && (
+                <div className="border-t">
+                  <div className="py-3 px-4 text-center text-sm font-medium text-primary hover:bg-primary/5 cursor-pointer flex items-center justify-center gap-2">
+                    {util.button_type === 'url' && <ExternalLink className="h-3 w-3" />}
+                    {util.button_text}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 px-2">
+              <p className="text-xs text-muted-foreground">
+                messaging_type: UTILITY · lang: {util.language || 'en'}
+                {headerFormat !== 'NONE' && headerFormat !== 'TEXT' && ` · header: ${headerFormat.toLowerCase()}`}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

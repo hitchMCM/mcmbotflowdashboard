@@ -56,8 +56,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// 5 categories for trigger configuration
-const TRIGGER_CATEGORIES: MessageCategory[] = ['welcome', 'response', 'comment_reply', 'sequence', 'broadcast'];
+// 6 categories for trigger configuration
+const TRIGGER_CATEGORIES: MessageCategory[] = ['welcome', 'response', 'comment_reply', 'sequence', 'broadcast', 'utility'];
 
 const CATEGORY_ICONS: Record<MessageCategory, React.ElementType> = {
   welcome: MessageSquare,
@@ -65,6 +65,7 @@ const CATEGORY_ICONS: Record<MessageCategory, React.ElementType> = {
   sequence: Settings2,
   broadcast: Radio,
   comment_reply: MessageCircle,
+  utility: Zap,
 };
 
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
@@ -116,6 +117,7 @@ export default function Configuration() {
   const sequenceMessages = useMessages('sequence');
   const broadcastMessages = useMessages('broadcast');
   const commentReplyMessages = useMessages('comment_reply');
+  const utilityMessagesRaw = useMessages('broadcast');
   
   // Load page configs - pass the pageId
   console.log('[Configuration] Current page for usePageConfigs:', currentPage?.id, currentPage?.name);
@@ -135,6 +137,7 @@ export default function Configuration() {
     comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
     sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [1440], scheduled_time: null, selected_message_ids: [] },
     broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
+    utility: { category: 'utility', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [540], scheduled_time: null, selected_message_ids: [] },
   });
 
   // Get messages for current category
@@ -145,6 +148,15 @@ export default function Configuration() {
       case 'comment_reply': return commentReplyMessages.messages;
       case 'sequence': return sequenceMessages.messages;
       case 'broadcast': return broadcastMessages.messages;
+      case 'utility': return utilityMessagesRaw.messages.filter((m: any) => {
+        const payload = m.messenger_payload as any;
+        if (payload?._message_content?.message_type !== 'utility') return false;
+        // Only show templates scoped to the current page
+        if (payload?._page_id !== currentPage?.id) return false;
+        // Only show templates approved by Meta
+        if (payload?._meta_template?.template_status !== 'APPROVED') return false;
+        return true;
+      });
       default: return [];
     }
   };
@@ -281,8 +293,8 @@ export default function Configuration() {
         while (delayHoursToSave.length < config.messages_count) {
           delayHoursToSave.push(delayHoursToSave.length * 24 * 60);
         }
-      } else if (category === 'broadcast') {
-        // Broadcast uses daily send times (stored as minutes)
+      } else if (category === 'broadcast' || category === 'utility') {
+        // Broadcast/Utility uses daily send times (stored as minutes)
         delayHoursToSave = config.delay_hours.slice(0, config.messages_count);
         // Pad with defaults if shorter
         while (delayHoursToSave.length < config.messages_count) {
@@ -295,7 +307,7 @@ export default function Configuration() {
       // For broadcast, convert ALL delay_hours values (minutes from midnight) to TIME format
       let scheduledTimeToSave: string | null = null;
       let scheduledTimesToSave: string[] | null = null;
-      if (category === 'broadcast' && delayHoursToSave.length > 0) {
+      if ((category === 'broadcast' || category === 'utility') && delayHoursToSave.length > 0) {
         // Convert all times to TIME format array
         scheduledTimesToSave = delayHoursToSave.map(m => {
           const hours = Math.floor(m / 60);
@@ -314,8 +326,8 @@ export default function Configuration() {
         selection_mode: config.selection_mode,
         messages_count: config.messages_count,
         delay_hours: delayHoursToSave,
-        scheduled_time: category === 'broadcast' ? scheduledTimeToSave : config.scheduled_time,
-        scheduled_times: category === 'broadcast' ? scheduledTimesToSave : null,
+        scheduled_time: (category === 'broadcast' || category === 'utility') ? scheduledTimeToSave : config.scheduled_time,
+        scheduled_times: (category === 'broadcast' || category === 'utility') ? scheduledTimesToSave : null,
         selected_message_ids: config.selected_message_ids,
       };
       
@@ -463,7 +475,7 @@ export default function Configuration() {
     }
   };
 
-  const isLoading = configsLoading || welcomeMessages.loading || responseMessages.loading || sequenceMessages.loading || broadcastMessages.loading;
+  const isLoading = configsLoading || welcomeMessages.loading || responseMessages.loading || sequenceMessages.loading || broadcastMessages.loading || utilityMessagesRaw.loading;
 
   if (isLoading) {
     return (
@@ -501,7 +513,7 @@ export default function Configuration() {
 
         {/* Category Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MessageCategory)}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             {TRIGGER_CATEGORIES.map(cat => {
               const Icon = CATEGORY_ICONS[cat];
               const config = triggerConfigs[cat];
@@ -574,7 +586,7 @@ export default function Configuration() {
                       <Separator />
 
                       {/* Messages Count - Only for sequence and broadcast */}
-                      {(category === 'sequence' || category === 'broadcast') && (
+                      {(category === 'sequence' || category === 'broadcast' || category === 'utility') && (
                         <div className="space-y-2">
                           <Label>Number of Messages to Send</Label>
                           <Input
@@ -660,7 +672,7 @@ export default function Configuration() {
                       )}
 
                       {/* Broadcast Configuration - Daily Time based on messages_count */}
-                      {category === 'broadcast' && (
+                      {(category === 'broadcast' || category === 'utility') && (
                         <div className="space-y-4">
                           <Label className="flex items-center gap-2 text-sm font-medium">
                             <Clock className="h-4 w-4" />
@@ -829,7 +841,7 @@ export default function Configuration() {
                         <div className="text-sm text-muted-foreground">
                           Mode: <span className="font-medium">{SELECTION_MODE_LABELS[config.selection_mode]}</span>
                         </div>
-                        {(category === 'sequence' || category === 'broadcast') && (
+                        {(category === 'sequence' || category === 'broadcast' || category === 'utility') && (
                           <div className="text-sm text-muted-foreground">
                             Send: <span className="font-medium">{config.messages_count} message(s)</span>
                           </div>
@@ -842,7 +854,7 @@ export default function Configuration() {
                             </span>
                           </div>
                         )}
-                        {category === 'broadcast' && config.messages_count > 0 && (
+                        {(category === 'broadcast' || category === 'utility') && config.messages_count > 0 && (
                           <div className="text-sm text-muted-foreground">
                             Times: <span className="font-medium">
                               {config.delay_hours.slice(0, Math.min(3, config.messages_count)).map(m => {

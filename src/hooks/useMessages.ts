@@ -23,6 +23,33 @@ const getCurrentUserId = (): string | null => {
   return null;
 };
 
+// Exact columns that exist in the 'messages' DB table (verified from PostgREST)
+// Only these columns will be sent in INSERT/UPDATE — everything else is stripped
+const VALID_DB_COLUMNS = new Set([
+  'id', 'title', 'subtitle', 'text_content', 'image_url', 'buttons',
+  'quick_replies', 'elements', 'media_type', 'is_active', 'sent_count',
+  'clicked_count', 'created_at', 'updated_at', 'user_id', 'name',
+  'category', 'message_type', 'messenger_payload',
+]);
+
+// Only keep columns that actually exist in the DB
+function cleanForDB(data: Record<string, any>): Record<string, any> {
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (VALID_DB_COLUMNS.has(key)) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+// If PostgREST returns PGRST204 (unknown column), extract the column name
+function extractBadColumn(error: any): string | null {
+  const msg = error?.message || '';
+  const match = msg.match(/Could not find the '(\w+)' column/);
+  return match ? match[1] : null;
+}
+
 // =====================================================================================
 // useMessages - Manage user's message pool
 // =====================================================================================
@@ -148,15 +175,32 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
       console.log('[useMessages] Creating message for user:', userId);
       
       // Build insert data - include user_id if available
-      const insertData = userId 
+      const rawData = userId 
         ? { ...message, user_id: userId }
-        : message;
+        : { ...message };
       
-      const { data, error: insertError } = await supabase
+      // Strip columns that don't exist in the actual DB
+      let insertData = cleanForDB(rawData);
+      console.log('[useMessages] Insert data (cleaned):', Object.keys(insertData));
+      
+      let { data, error: insertError } = await supabase
         .from('messages')
         .insert(insertData)
         .select()
         .single();
+      
+      // If failed with user_id, try without it (might be invalid UUID)
+      if (insertError && userId) {
+        console.warn('[useMessages] Insert failed, retrying without user_id:', insertError.message);
+        const { user_id: _removed, ...dataWithoutUserId } = insertData as any;
+        const retry = await supabase
+          .from('messages')
+          .insert(dataWithoutUserId)
+          .select()
+          .single();
+        data = retry.data;
+        insertError = retry.error;
+      }
       
       if (insertError) {
         console.error('[useMessages] Insert error:', insertError);
@@ -178,9 +222,13 @@ export function useMessages(categoryOrOptions?: MessageCategory | UseMessagesOpt
       console.log('[useMessages] Updating message ID:', id);
       console.log('[useMessages] Update data:', JSON.stringify(updates, null, 2));
       
+      // Strip columns that don't exist in the actual DB
+      const cleanedUpdates = cleanForDB(updates as Record<string, any>);
+      console.log('[useMessages] Update data (cleaned):', Object.keys(cleanedUpdates));
+      
       const { data, error: updateError } = await supabase
         .from('messages')
-        .update(updates)
+        .update(cleanedUpdates)
         .eq('id', id)
         .select();
       
