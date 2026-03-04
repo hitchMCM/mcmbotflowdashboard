@@ -1,4 +1,5 @@
 import { MessageContent, MessageButton, TemplateElement, QuickReply, FacebookMessageType, ImageFullContent, OptInContent, UtilityContent } from "@/types/messages";
+import { extractOrderedVariables, convertFriendlyToNumbered, FRIENDLY_TAG_MAP } from "@/hooks/useUtilityTemplates";
 
 /**
  * Generate Facebook Messenger API JSON payload from MessageContent
@@ -166,13 +167,23 @@ export function generateMessengerPayload(content: MessageContent): any {
       if (content.utility) {
         const util = content.utility;
         const components: any[] = [];
+
+        // Collect all text fields for consistent variable ordering (friendly → numbered)
+        const btnTexts = (util.buttons || []).map(b => (b.url || '') + ' ' + (b.payload || '')).join(' ');
+        const allUtilTexts = [
+          util.header_text || '',
+          util.body_text || '',
+          btnTexts,
+          util.button_url || '',
+          util.button_payload || '',
+        ];
         
         // Header component — ONLY include if the header has dynamic {{N}} variables.
         // IMAGE/VIDEO/DOCUMENT headers are baked into the approved template at creation
         // time, so they must NOT be re-sent at send time (Meta error 1893028).
         const headerFormat = util.header_format || (util.header_text ? 'TEXT' : 'NONE');
         if (headerFormat === 'TEXT' && util.header_text) {
-          const headerParams = extractTemplateParams(util.header_text, util.example_values);
+          const headerParams = extractTemplateParams(util.header_text, util.example_values, allUtilTexts);
           if (headerParams.length > 0) {
             components.push({ type: "header", parameters: headerParams });
           }
@@ -183,7 +194,7 @@ export function generateMessengerPayload(content: MessageContent): any {
         
         // Body component
         if (util.body_text) {
-          const bodyParams = extractTemplateParams(util.body_text, util.example_values);
+          const bodyParams = extractTemplateParams(util.body_text, util.example_values, allUtilTexts);
           if (bodyParams.length > 0) {
             components.push({ type: "body", parameters: bodyParams });
           }
@@ -476,8 +487,17 @@ function parseButton(btn: any): MessageButton {
  * Extract template parameters from text with {{1}}, {{2}} placeholders
  * Returns array of parameter objects for the Facebook API
  */
-function extractTemplateParams(text: string, exampleValues: string[] = []): any[] {
-  const matches = text.match(/\{\{(\d+)\}\}/g);
+function extractTemplateParams(text: string, exampleValues: string[] = [], allTexts?: string[]): any[] {
+  // If text contains friendly tags like {{FirstName}}, convert to numbered first
+  let processedText = text;
+  const textsForOrdering = allTexts || [text];
+  const variableOrder = extractOrderedVariables(textsForOrdering);
+  const hasFriendlyTags = variableOrder.some(k => !!FRIENDLY_TAG_MAP[k]);
+  if (hasFriendlyTags) {
+    processedText = convertFriendlyToNumbered(text, variableOrder);
+  }
+
+  const matches = processedText.match(/\{\{(\d+)\}\}/g);
   if (!matches) return [];
   
   // Get unique sorted variable numbers

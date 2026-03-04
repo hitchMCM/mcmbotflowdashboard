@@ -38,7 +38,7 @@ import {
   FACEBOOK_MESSAGE_TYPE_LABELS,
 } from "@/types/messages";
 import { UtilityTemplateStatusPanel } from "@/components/messages/UtilityTemplateStatus";
-import { UtilityTemplateStatus as UtilityStatusType } from "@/hooks/useUtilityTemplates";
+import { UtilityTemplateStatus as UtilityStatusType, extractOrderedVariables, FRIENDLY_TAG_MAP, buildParamLabelsFromVars, buildExampleValuesFromVars } from "@/hooks/useUtilityTemplates";
 
 // Facebook Messenger Character Limits
 export const FB_LIMITS = {
@@ -337,27 +337,44 @@ export function MessageEditor({
   const updateUtility = (updates: Partial<UtilityContent>) => {
     const current = value.utility || defaultUtility;
     const updated = { ...current, ...updates };
-    // Auto-detect variable count from all text fields including button URLs
+    // Auto-detect variable count from all text fields (supports BOTH friendly and numbered tags)
     const buttonTexts = (updated.buttons || []).map(b => (b.url || '') + ' ' + (b.payload || '')).join(' ');
-    const allText = (updated.header_text || '') + ' ' + (updated.body_text || '') + ' ' + buttonTexts + ' ' + (updated.button_url || '') + ' ' + (updated.button_payload || '');
-    const matches = allText.match(/\{\{(\d+)\}\}/g);
-    const maxVar = matches ? Math.max(...matches.map(m => parseInt(m.replace(/[{}]/g, '')))) : 0;
-    // Adjust example_values array size
-    while (updated.example_values.length < maxVar) {
-      updated.example_values.push('');
-    }
-    if (maxVar > 0 && updated.example_values.length > maxVar) {
-      updated.example_values = updated.example_values.slice(0, maxVar);
-    }
-    // Keep param_labels in sync
-    const labels = updated.param_labels || [];
-    while (labels.length < maxVar) {
-      labels.push('');
-    }
-    if (maxVar > 0 && labels.length > maxVar) {
-      updated.param_labels = labels.slice(0, maxVar);
+    const allTexts = [
+      updated.header_text || '',
+      updated.body_text || '',
+      buttonTexts,
+      updated.button_url || '',
+      updated.button_payload || '',
+    ];
+    const variableOrder = extractOrderedVariables(allTexts);
+    const varCount = variableOrder.length;
+    const hasFriendlyTags = variableOrder.some(k => !!FRIENDLY_TAG_MAP[k]);
+
+    if (hasFriendlyTags) {
+      // Auto-fill param_labels and example_values from friendly tag names
+      updated.param_labels = buildParamLabelsFromVars(variableOrder, updated.param_labels);
+      updated.example_values = buildExampleValuesFromVars(variableOrder, updated.example_values);
     } else {
-      updated.param_labels = labels;
+      // Legacy: count numbered {{N}} tags
+      const allText = allTexts.join(' ');
+      const matches = allText.match(/\{\{(\d+)\}\}/g);
+      const maxVar = matches ? Math.max(...matches.map(m => parseInt(m.replace(/[{}]/g, '')))) : 0;
+      while (updated.example_values.length < maxVar) {
+        updated.example_values.push('');
+      }
+      if (maxVar > 0 && updated.example_values.length > maxVar) {
+        updated.example_values = updated.example_values.slice(0, maxVar);
+      }
+      // Keep param_labels in sync
+      const labels = updated.param_labels || [];
+      while (labels.length < maxVar) {
+        labels.push('');
+      }
+      if (maxVar > 0 && labels.length > maxVar) {
+        updated.param_labels = labels.slice(0, maxVar);
+      } else {
+        updated.param_labels = labels;
+      }
     }
     onChange({ ...value, utility: updated });
   };
@@ -1148,9 +1165,9 @@ export function MessageEditor({
             {/* Header: TEXT */}
             {value.utility?.header_format === 'TEXT' && (
               <div className="space-y-2 pl-4 border-l-2 border-blue-500/30">
-                <Label>Header text (max 60 characters, 1 variable max)</Label>
-                <Input
-                  placeholder="{{1}} Update"
+                <Label>Header text (max 60 characters, 1 variable max — type {'{{'} for suggestions)</Label>
+                <TagAutocompleteInput
+                  placeholder="{{FirstName}} Update"
                   value={value.utility?.header_text || ""}
                   onChange={(e) => updateUtility({ header_text: e.target.value })}
                   maxLength={60}
@@ -1162,9 +1179,9 @@ export function MessageEditor({
             {/* Header: IMAGE */}
             {value.utility?.header_format === 'IMAGE' && (
               <div className="space-y-2 pl-4 border-l-2 border-blue-500/30">
-                <Label>Header text (required with image, max 60 chars)</Label>
-                <Input
-                  placeholder="{{1}} Update"
+                <Label>Header text (required with image, max 60 chars — type {'{{'} for suggestions)</Label>
+                <TagAutocompleteInput
+                  placeholder="{{FirstName}} Update"
                   value={value.utility?.header_text || ""}
                   onChange={(e) => updateUtility({ header_text: e.target.value })}
                   maxLength={60}
@@ -1221,7 +1238,7 @@ export function MessageEditor({
               <CharCount current={value.utility?.body_text?.length || 0} max={1024} />
             </div>
             <TagAutocompleteTextarea
-              placeholder="Great news! Your order #{{1}} is on its way. Thank you {{2}}! (type {{ for tags)"
+              placeholder="Great news {{FirstName}}! Your order is on its way. Thank you {{FullName}}! (type {{ for tags)"
               value={value.utility?.body_text || ""}
               onChange={(e) => updateUtility({ body_text: e.target.value })}
               className={cn("min-h-24", (value.utility?.body_text?.length || 0) > 1024 && "border-destructive")}
@@ -1337,19 +1354,47 @@ export function MessageEditor({
           <Separator />
 
           {/* Example Values & Parameter Labels */}
-          {(value.utility?.example_values?.length || 0) > 0 && (
+          {(value.utility?.example_values?.length || 0) > 0 && (() => {
+            // Determine which variables are being used (friendly vs numbered)
+            const buttonTexts = (value.utility?.buttons || []).map(b => (b.url || '') + ' ' + (b.payload || '')).join(' ');
+            const allTexts = [
+              value.utility?.header_text || '',
+              value.utility?.body_text || '',
+              buttonTexts,
+              value.utility?.button_url || '',
+              value.utility?.button_payload || '',
+            ];
+            const variableOrder = extractOrderedVariables(allTexts);
+            const hasFriendlyTags = variableOrder.some(k => !!FRIENDLY_TAG_MAP[k]);
+
+            return (
             <div className="space-y-2">
               <Label>Variables: labels & examples</Label>
               <p className="text-xs text-muted-foreground mb-2">
-                Choose which subscriber field corresponds to each variable. The example is sent to Meta for validation.
-                The <strong>label</strong> will be used by the backend (n8n) to know which data to inject.
+                {hasFriendlyTags
+                  ? <>Variables are auto-detected from tags like <code className="text-blue-400">{'{{'} FirstName {'}}'}</code>. The label and a default example are filled automatically. You can adjust the example value sent to Meta for review.</>
+                  : <>Choose which subscriber field corresponds to each variable. The example is sent to Meta for validation.
+                The <strong>label</strong> will be used by the backend (n8n) to know which data to inject.</>}
               </p>
               <div className="grid gap-3">
-                {value.utility?.example_values?.map((val, idx) => (
+                {value.utility?.example_values?.map((val, idx) => {
+                  const varKey = variableOrder[idx];
+                  const isFriendly = varKey && !!FRIENDLY_TAG_MAP[varKey];
+                  const friendlyLabel = isFriendly ? FRIENDLY_TAG_MAP[varKey].param_label : undefined;
+
+                  return (
                   <div key={idx} className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-blue-400 border-blue-500/30 shrink-0 min-w-[50px] justify-center">
-                      {`{{${idx + 1}}}`}
+                    <Badge variant="outline" className={cn(
+                      "shrink-0 min-w-[50px] justify-center",
+                      isFriendly ? "text-green-400 border-green-500/30" : "text-blue-400 border-blue-500/30"
+                    )}>
+                      {isFriendly ? `{{${varKey}}}` : `{{${idx + 1}}}`}
                     </Badge>
+                    {isFriendly ? (
+                      <Badge variant="secondary" className="min-w-[140px] justify-center text-xs">
+                        {friendlyLabel}
+                      </Badge>
+                    ) : (
                     <select
                       aria-label={`Field for variable {{${idx + 1}}}`}
                       className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]"
@@ -1375,8 +1420,9 @@ export function MessageEditor({
                       <option value="address">Address</option>
                       <option value="custom">Custom</option>
                     </select>
+                    )}
                     <Input
-                      placeholder={`Example value for {{${idx + 1}}}`}
+                      placeholder={isFriendly ? `e.g. ${FRIENDLY_TAG_MAP[varKey].example}` : `Example value for {{${idx + 1}}}`}
                       value={val}
                       onChange={(e) => {
                         const newValues = [...(value.utility?.example_values || [])];
@@ -1386,10 +1432,17 @@ export function MessageEditor({
                       className="flex-1"
                     />
                   </div>
-                ))}
+                  );
+                })}
               </div>
+              {hasFriendlyTags && (
+                <p className="text-xs text-green-400/80 mt-1">
+                  ✨ Variables will be automatically converted to {'{{1}}'}, {'{{2}}'}, etc. when submitting to Meta.
+                </p>
+              )}
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 

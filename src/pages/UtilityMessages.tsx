@@ -64,10 +64,10 @@ const defaultUtilityContent: MessageContent = {
     header_format: "NONE",
     header_text: "",
     header_image_url: "",
-    body_text: "Your order #{{1}} is on its way!",
+    body_text: "",
     footer_text: "",
     buttons: [],
-    example_values: ["566701"],
+    example_values: [],
   }
 };
 

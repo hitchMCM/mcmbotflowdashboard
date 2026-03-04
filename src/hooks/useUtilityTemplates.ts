@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { usePage } from '@/contexts/PageContext';
 import { UtilityContent } from '@/types/messages';
+import { PERSONALIZATION_TAGS } from '@/components/ui/TagAutocompleteTextarea';
 
 // =====================================================================================
 // Meta Graph API - Utility Message Templates
@@ -58,6 +59,112 @@ interface MetaErrorResponse {
 }
 
 // =====================================================================================
+// Friendly Tag ↔ Numbered Variable Conversion
+// =====================================================================================
+
+/**
+ * Mapping from friendly tag names to param_label values and default examples.
+ * This is the single source of truth for tag → field mapping.
+ */
+export const FRIENDLY_TAG_MAP: Record<string, { param_label: string; example: string }> = {
+  'FullName':  { param_label: 'full_name',  example: 'John Doe' },
+  'FirstName': { param_label: 'first_name', example: 'John' },
+  'LastName':  { param_label: 'last_name',  example: 'Doe' },
+};
+
+/** Regex that matches friendly tags like {{FirstName}}, {{FullName}}, {{LastName}} */
+const FRIENDLY_TAG_REGEX = /\{\{(FullName|FirstName|LastName)\}\}/g;
+
+/** Regex that matches numbered tags like {{1}}, {{2}} */
+const NUMBERED_TAG_REGEX = /\{\{(\d+)\}\}/g;
+
+/**
+ * Count distinct variables (friendly OR numbered) across all text fields.
+ * Returns the list of unique variable keys in order of first appearance.
+ * e.g. ["FirstName", "FullName"] or ["1", "2"] — never mixed.
+ */
+export function extractOrderedVariables(texts: string[]): string[] {
+  const allText = texts.join(' ');
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  // First check for friendly tags
+  const friendlyMatches = allText.matchAll(FRIENDLY_TAG_REGEX);
+  for (const m of friendlyMatches) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      ordered.push(m[1]);
+    }
+  }
+
+  // Also check for numbered tags (user might mix or use old style)
+  const numberedMatches = allText.matchAll(NUMBERED_TAG_REGEX);
+  for (const m of numberedMatches) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      ordered.push(m[1]);
+    }
+  }
+
+  return ordered;
+}
+
+/**
+ * Convert friendly tags to numbered Meta format.
+ * e.g. "Hello {{FirstName}}, order for {{FullName}}" → "Hello {{1}}, order for {{2}}"
+ * Returns: { text, varMap } where varMap maps position → friendly tag key
+ */
+export function convertFriendlyToNumbered(
+  text: string,
+  variableOrder: string[]
+): string {
+  let result = text;
+  variableOrder.forEach((key, idx) => {
+    // Only replace friendly tags (not already numbered)
+    if (FRIENDLY_TAG_MAP[key]) {
+      const friendlyPattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      result = result.replace(friendlyPattern, `{{${idx + 1}}}`);
+    }
+  });
+  return result;
+}
+
+/**
+ * Build param_labels array from the ordered variable list.
+ * Friendly tags get their param_label; numbered tags keep their existing label.
+ */
+export function buildParamLabelsFromVars(
+  variableOrder: string[],
+  existingLabels?: string[]
+): string[] {
+  return variableOrder.map((key, idx) => {
+    if (FRIENDLY_TAG_MAP[key]) {
+      return FRIENDLY_TAG_MAP[key].param_label;
+    }
+    // Numbered var — keep existing label if any
+    return existingLabels?.[idx] || '';
+  });
+}
+
+/**
+ * Build default example values from the ordered variable list.
+ * Friendly tags get smart defaults; numbered tags keep existing or fallback.
+ */
+export function buildExampleValuesFromVars(
+  variableOrder: string[],
+  existingValues?: string[]
+): string[] {
+  return variableOrder.map((key, idx) => {
+    if (FRIENDLY_TAG_MAP[key]) {
+      // Use existing value if user already typed one, otherwise use default
+      const existing = existingValues?.[idx]?.trim();
+      return existing || FRIENDLY_TAG_MAP[key].example;
+    }
+    return existingValues?.[idx] || '';
+  });
+}
+
+// =====================================================================================
 // STEP 2 & 3: Build Meta API payload from utility content
 // =====================================================================================
 
@@ -76,38 +183,67 @@ function ensureExamples(values: string[], count: number): string[] {
 function buildTemplateComponents(utility: UtilityContent): MetaTemplateComponent[] {
   const components: MetaTemplateComponent[] = [];
 
+  // ── Convert friendly tags → numbered BEFORE building components ──
+  // Collect all text fields to determine global variable order
+  const buttonTexts = (utility.buttons || []).map(b => (b.url || '') + ' ' + (b.payload || '')).join(' ');
+  const allTexts = [
+    utility.header_text || '',
+    utility.body_text || '',
+    buttonTexts,
+    utility.button_url || '',
+    utility.button_payload || '',
+  ];
+  const variableOrder = extractOrderedVariables(allTexts);
+  const hasFriendlyTags = variableOrder.some(k => !!FRIENDLY_TAG_MAP[k]);
+
+  // Create a working copy with friendly tags converted to numbered
+  const u = { ...utility };
+  if (hasFriendlyTags) {
+    if (u.header_text) u.header_text = convertFriendlyToNumbered(u.header_text, variableOrder);
+    if (u.body_text) u.body_text = convertFriendlyToNumbered(u.body_text, variableOrder);
+    if (u.button_url) u.button_url = convertFriendlyToNumbered(u.button_url, variableOrder);
+    if (u.button_payload) u.button_payload = convertFriendlyToNumbered(u.button_payload, variableOrder);
+    if (u.buttons) {
+      u.buttons = u.buttons.map(btn => ({
+        ...btn,
+        url: btn.url ? convertFriendlyToNumbered(btn.url, variableOrder) : btn.url,
+        payload: btn.payload ? convertFriendlyToNumbered(btn.payload, variableOrder) : btn.payload,
+      }));
+    }
+    // Also build proper example values from the friendly tag mapping
+    u.example_values = buildExampleValuesFromVars(variableOrder, utility.example_values);
+  }
+
   // HEADER component (optional) — supports TEXT, IMAGE, VIDEO, DOCUMENT
-  const headerFormat = utility.header_format || (utility.header_text?.trim() ? 'TEXT' : 'NONE');
+  const headerFormat = u.header_format || (u.header_text?.trim() ? 'TEXT' : 'NONE');
   
-  if (headerFormat === 'TEXT' && utility.header_text?.trim()) {
+  if (headerFormat === 'TEXT' && u.header_text?.trim()) {
     const headerComponent: MetaTemplateComponent = {
       type: 'HEADER',
       format: 'TEXT',
-      text: utility.header_text.trim(),
+      text: u.header_text.trim(),
     };
-    const headerVarCount = (utility.header_text.match(/\{\{\d+\}\}/g) || []).length;
+    const headerVarCount = (u.header_text.match(/\{\{\d+\}\}/g) || []).length;
     if (headerVarCount > 0) {
       headerComponent.example = {
-        header_text: ensureExamples(utility.example_values || [], headerVarCount),
+        header_text: ensureExamples(u.example_values || [], headerVarCount),
       };
     }
     components.push(headerComponent);
-  } else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && utility.header_media_handle) {
+  } else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && u.header_media_handle) {
     // For template CREATION: include the media handle so Meta stores the image.
-    // The `text` field is optional — if the user provided header text, include it.
     const headerComp: MetaTemplateComponent = {
       type: 'HEADER',
       format: headerFormat as 'IMAGE' | 'VIDEO' | 'DOCUMENT',
       example: {
-        header_handle: [utility.header_media_handle],
+        header_handle: [u.header_media_handle],
       },
     };
-    // Only add text if the user provided it (some templates need it, some don't)
-    if (utility.header_text?.trim()) {
-      headerComp.text = utility.header_text.trim();
-      const headerVarCount = (utility.header_text.match(/\{\{\d+\}\}/g) || []).length;
+    if (u.header_text?.trim()) {
+      headerComp.text = u.header_text.trim();
+      const headerVarCount = (u.header_text.match(/\{\{\d+\}\}/g) || []).length;
       if (headerVarCount > 0) {
-        headerComp.example!.header_text = ensureExamples(utility.example_values || [], headerVarCount);
+        headerComp.example!.header_text = ensureExamples(u.example_values || [], headerVarCount);
       }
     }
     components.push(headerComp);
@@ -117,13 +253,13 @@ function buildTemplateComponents(utility: UtilityContent): MetaTemplateComponent
   // BODY component (required)
   const bodyComponent: MetaTemplateComponent = {
     type: 'BODY',
-    text: utility.body_text,
+    text: u.body_text,
   };
-  const bodyVarMatches = utility.body_text.match(/\{\{\d+\}\}/g) || [];
+  const bodyVarMatches = u.body_text.match(/\{\{\d+\}\}/g) || [];
   if (bodyVarMatches.length > 0) {
-    const headerVarCount = (utility.header_text?.match(/\{\{\d+\}\}/g) || []).length;
+    const headerVarCount = (u.header_text?.match(/\{\{\d+\}\}/g) || []).length;
     const bodyExamples = ensureExamples(
-      (utility.example_values || []).slice(headerVarCount),
+      (u.example_values || []).slice(headerVarCount),
       bodyVarMatches.length
     );
     bodyComponent.example = {
@@ -138,7 +274,7 @@ function buildTemplateComponents(utility: UtilityContent): MetaTemplateComponent
 
   // BUTTONS component — Messenger supports URL and POSTBACK buttons
   // Only include buttons that have text (Meta rejects empty button text)
-  const validButtons = (utility.buttons || []).filter(btn => btn.text?.trim());
+  const validButtons = (u.buttons || []).filter(btn => btn.text?.trim());
   if (validButtons.length > 0) {
     const metaButtons: MetaTemplateButton[] = validButtons.map(btn => {
       const metaBtn: MetaTemplateButton = {
@@ -163,20 +299,20 @@ function buildTemplateComponents(utility: UtilityContent): MetaTemplateComponent
     });
   }
   // Legacy single-button support (backward compat)
-  else if (utility.button_type && utility.button_text) {
+  else if (u.button_type && u.button_text) {
     const button: MetaTemplateButton = {
-      type: utility.button_type === 'url' ? 'URL' : 'POSTBACK',
-      text: utility.button_text,
+      type: u.button_type === 'url' ? 'URL' : 'POSTBACK',
+      text: u.button_text,
     };
-    if (utility.button_type === 'url' && utility.button_url) {
-      button.url = utility.button_url;
-      const urlVarCount = (utility.button_url.match(/\{\{\d+\}\}/g) || []).length;
+    if (u.button_type === 'url' && u.button_url) {
+      button.url = u.button_url;
+      const urlVarCount = (u.button_url.match(/\{\{\d+\}\}/g) || []).length;
       if (urlVarCount > 0) {
         button.example = { url_suffix_example: 'https://example.com/orders/1234' };
       }
     }
-    if (utility.button_type === 'postback' && utility.button_payload) {
-      button.payload = utility.button_payload;
+    if (u.button_type === 'postback' && u.button_payload) {
+      button.payload = u.button_payload;
     }
     components.push({
       type: 'BUTTONS',
