@@ -307,28 +307,15 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
     try {
       setLoading(true);
 
-      const buildQuery = (cols: string) => {
-        let q = supabase
-          .from('page_configs')
-          .select(cols)
-          .eq('page_id', pageId)
-          .order('created_at', { ascending: false });
-        if (category) q = q.eq('category', category);
-        return q;
-      };
+      let query = supabase
+        .from('page_configs')
+        .select('*')
+        .eq('page_id', pageId)
+        .order('created_at', { ascending: false });
 
-      const fullCols = 'id, page_id, category, name, is_enabled, selection_mode, messages_count, delay_hours, delay_seconds, reset_period_hours, scheduled_time, scheduled_times, scheduled_date, selected_message_ids, fixed_message_id, trigger_keywords, times_triggered, created_at, updated_at';
-      const fallbackCols = 'id, page_id, category, name, is_enabled, selection_mode, messages_count, delay_hours, scheduled_time, scheduled_times, scheduled_date, selected_message_ids, fixed_message_id, trigger_keywords, times_triggered, created_at, updated_at';
+      if (category) query = query.eq('category', category);
 
-      let { data, error: fetchError } = await buildQuery(fullCols);
-
-      // If the new columns aren't in the schema cache yet, retry without them
-      if (fetchError && fetchError.message?.includes('column')) {
-        console.warn('[usePageConfigs] New columns not in schema cache, retrying without delay_seconds/reset_period_hours');
-        const retry = await buildQuery(fallbackCols);
-        data = retry.data;
-        fetchError = retry.error;
-      }
+      const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
       setConfigs(data || []);
