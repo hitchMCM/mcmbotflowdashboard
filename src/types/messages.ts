@@ -292,6 +292,10 @@ export interface PageConfig {
   // Count
   messages_count: number;
   
+  // Rate limiting (responses)
+  delay_seconds: number;
+  reset_period_hours: number;
+  
   // Timing (sequences)
   delay_hours: number[];
   
@@ -320,6 +324,8 @@ export interface PageConfigInsert {
   selection_mode?: SelectionMode;
   fixed_message_id?: string | null;
   messages_count?: number;
+  delay_seconds?: number;
+  reset_period_hours?: number;
   delay_hours?: number[];
   scheduled_time?: string | null;
   scheduled_times?: string[] | null;

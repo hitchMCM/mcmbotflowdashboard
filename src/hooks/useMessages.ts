@@ -308,7 +308,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       setLoading(true);
       let query = supabase
         .from('page_configs')
-        .select('*')
+        .select('id, page_id, category, name, is_enabled, selection_mode, messages_count, delay_hours, delay_seconds, reset_period_hours, scheduled_time, scheduled_times, scheduled_date, selected_message_ids, fixed_message_id, trigger_keywords, times_triggered, created_at, updated_at')
         .eq('page_id', pageId)
         .order('created_at', { ascending: false });
       
@@ -360,25 +360,38 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       if (existing?.id) {
         // Update existing config
         console.log('[usePageConfigs] Updating existing config:', existing.id);
-        const updateData = {
+        const updateData: any = {
           name: config.name, // Also update name in case it changed
           selected_message_ids: config.selected_message_ids || [],
           selection_mode: config.selection_mode || 'random',
           fixed_message_id: config.fixed_message_id || null,
           trigger_keywords: config.trigger_keywords || [],
           delay_hours: config.delay_hours || [],
+          delay_seconds: config.delay_seconds ?? 0,
+          reset_period_hours: config.reset_period_hours ?? 24,
           scheduled_time: config.scheduled_time || null,
           scheduled_times: config.scheduled_times || null,
-          messages_count: config.messages_count || 1,
+          messages_count: config.messages_count !== undefined ? config.messages_count : 1,
           is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
           updated_at: new Date().toISOString(),
         };
         console.log('[usePageConfigs] Update data:', JSON.stringify(updateData, null, 2));
         
-        const { error: updateError } = await supabase
+        let { error: updateError } = await supabase
           .from('page_configs')
           .update(updateData)
           .eq('id', existing.id);
+        
+        // Fallback: if new columns don't exist in DB yet, retry without them
+        if (updateError && updateError.message?.includes('column')) {
+          console.warn('[usePageConfigs] New columns not found, retrying without delay_seconds/reset_period_hours');
+          const { delay_seconds: _ds, reset_period_hours: _rph, ...fallbackData } = updateData;
+          const { error: retryError } = await supabase
+            .from('page_configs')
+            .update(fallbackData)
+            .eq('id', existing.id);
+          updateError = retryError;
+        }
         
         if (updateError) {
           console.error('[usePageConfigs] Update error:', updateError);
@@ -398,30 +411,46 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       } else {
         // Insert new config
         console.log('[usePageConfigs] Inserting new config');
-        const { data: inserted, error: insertError } = await supabase
+        const insertData: any = {
+          page_id: config.page_id,
+          category: config.category,
+          name: config.name,
+          selected_message_ids: config.selected_message_ids || [],
+          selection_mode: config.selection_mode || 'random',
+          fixed_message_id: config.fixed_message_id || null,
+          trigger_keywords: config.trigger_keywords || [],
+          delay_hours: config.delay_hours || [],
+          delay_seconds: config.delay_seconds ?? 0,
+          reset_period_hours: config.reset_period_hours ?? 24,
+          scheduled_time: config.scheduled_time || null,
+          scheduled_times: config.scheduled_times || null,
+          messages_count: config.messages_count !== undefined ? config.messages_count : 1,
+          is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
+        };
+        let { data: inserted, error: insertError } = await supabase
           .from('page_configs')
-          .insert({
-            page_id: config.page_id,
-            category: config.category,
-            name: config.name,
-            selected_message_ids: config.selected_message_ids || [],
-            selection_mode: config.selection_mode || 'random',
-            fixed_message_id: config.fixed_message_id || null,
-            trigger_keywords: config.trigger_keywords || [],
-            delay_hours: config.delay_hours || [],
-            scheduled_time: config.scheduled_time || null,
-            scheduled_times: config.scheduled_times || null,
-            messages_count: config.messages_count || 1,
-            is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
-          })
+          .insert(insertData)
           .select('id')
           .single();
+        
+        // Fallback: if new columns don't exist in DB yet, retry without them
+        if (insertError && insertError.message?.includes('column')) {
+          console.warn('[usePageConfigs] New columns not found, retrying without delay_seconds/reset_period_hours');
+          const { delay_seconds: _ds, reset_period_hours: _rph, ...fallbackInsert } = insertData;
+          const { data: retryData, error: retryError } = await supabase
+            .from('page_configs')
+            .insert(fallbackInsert)
+            .select('id')
+            .single();
+          inserted = retryData;
+          insertError = retryError;
+        }
         
         if (insertError) {
           console.error('[usePageConfigs] Insert error:', insertError);
           throw insertError;
         }
-        resultId = inserted.id;
+        resultId = inserted!.id;
       }
 
       console.log('[usePageConfigs] Config saved successfully:', resultId);

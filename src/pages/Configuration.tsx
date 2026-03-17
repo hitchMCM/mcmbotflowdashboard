@@ -78,6 +78,8 @@ interface TriggerConfig {
   is_enabled: boolean;
   selection_mode: SelectionMode;
   messages_count: number;
+  delay_seconds: number;
+  reset_period_hours: number;
   delay_hours: number[];
   scheduled_time: string | null;
   selected_message_ids: string[];
@@ -132,12 +134,12 @@ export default function Configuration() {
   
   // Local state for editing
   const [triggerConfigs, setTriggerConfigs] = useState<Record<MessageCategory, TriggerConfig>>({
-    welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [1440], scheduled_time: null, selected_message_ids: [] },
-    broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    utility: { category: 'utility', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_hours: [540], scheduled_time: null, selected_message_ids: [] },
+    welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
+    response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
+    comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
+    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [1440], scheduled_time: null, selected_message_ids: [] },
+    broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
+    utility: { category: 'utility', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [540], scheduled_time: null, selected_message_ids: [] },
   });
 
   // Get messages for current category
@@ -175,7 +177,14 @@ export default function Configuration() {
             category: cfg.category,
             is_enabled: cfg.is_enabled,
             selection_mode: cfg.selection_mode || 'random',
-            messages_count: cfg.messages_count || 1,
+            messages_count: cfg.messages_count ?? 0,
+            // For response/comment_reply: delay_hours[0]=delay_seconds, delay_hours[1]=reset_period_hours
+            delay_seconds: (cfg.category === 'response' || cfg.category === 'comment_reply')
+              ? (cfg.delay_seconds ?? cfg.delay_hours?.[0] ?? 0)
+              : (cfg.delay_seconds ?? 0),
+            reset_period_hours: (cfg.category === 'response' || cfg.category === 'comment_reply')
+              ? (cfg.reset_period_hours ?? cfg.delay_hours?.[1] ?? 24)
+              : (cfg.reset_period_hours ?? 24),
             delay_hours: cfg.delay_hours || [0],
             scheduled_time: cfg.scheduled_time || null,
             selected_message_ids: cfg.selected_message_ids || [],
@@ -283,9 +292,13 @@ export default function Configuration() {
       // Ensure delay_hours is appropriate for each category
       let delayHoursToSave: number[];
       
-      if (category === 'welcome' || category === 'response') {
-        // Welcome and Response send immediately - no delays needed
+      if (category === 'welcome') {
+        // Welcome sends immediately - no delays needed
         delayHoursToSave = [0];
+      } else if (category === 'response' || category === 'comment_reply') {
+        // Encode delay_seconds in [0] and reset_period_hours in [1]
+        // delay_hours already known by PostgREST — no schema cache needed
+        delayHoursToSave = [config.delay_seconds ?? 0, config.reset_period_hours ?? 24];
       } else if (category === 'sequence') {
         // Sequence uses minutes after subscription
         delayHoursToSave = config.delay_hours.slice(0, config.messages_count);
@@ -318,13 +331,15 @@ export default function Configuration() {
         scheduledTimeToSave = scheduledTimesToSave[0];
       }
       
-      const configToSave = {
+      const configToSave: any = {
         page_id: currentPage.id,
         category: category,
         name: `${CATEGORY_LABELS[category]} Config`,
         is_enabled: config.is_enabled,
         selection_mode: config.selection_mode,
         messages_count: config.messages_count,
+        delay_seconds: config.delay_seconds,
+        reset_period_hours: config.reset_period_hours,
         delay_hours: delayHoursToSave,
         scheduled_time: (category === 'broadcast' || category === 'utility') ? scheduledTimeToSave : config.scheduled_time,
         scheduled_times: (category === 'broadcast' || category === 'utility') ? scheduledTimesToSave : null,
@@ -585,6 +600,83 @@ export default function Configuration() {
 
                       <Separator />
 
+                      {/* Response Sending Configuration - Delay + Max Replies */}
+                      {(category === 'response' || category === 'comment_reply') && (
+                        <>
+                          <div className="space-y-4">
+                            <Label className="flex items-center gap-2 text-sm font-medium">
+                              <Clock className="h-4 w-4" />
+                              Delay Before Responding (seconds)
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              Wait this long before sending a reply to a subscriber message.
+                            </p>
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={3600}
+                                value={config.delay_seconds}
+                                onChange={(e) => updateLocalConfig(category, 'delay_seconds', Math.min(3600, Math.max(0, parseInt(e.target.value) || 0)))}
+                                className="w-24"
+                              />
+                              <span className="text-sm text-muted-foreground">seconds</span>
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-3">
+                            <Label className="flex items-center gap-2 text-sm font-medium">
+                              <AlertCircle className="h-4 w-4" />
+                              Max Messages Per Period
+                            </Label>
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                              <Switch
+                                checked={config.messages_count === 0}
+                                onCheckedChange={(checked) => updateLocalConfig(category, 'messages_count', checked ? 0 : 5)}
+                              />
+                              <span className="text-sm font-medium">
+                                {config.messages_count === 0 ? 'Unlimited (∞)' : 'Limited'}
+                              </span>
+                            </div>
+                            {config.messages_count !== 0 && (
+                              <Input
+                                type="number"
+                                min={1}
+                                max={100}
+                                value={config.messages_count}
+                                onChange={(e) => updateLocalConfig(category, 'messages_count', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                              />
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {config.messages_count === 0
+                                ? 'No limit on the number of automatic replies per subscriber.'
+                                : 'Limit the number of automatic replies sent to a single subscriber per reset period.'}
+                            </p>
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-2">
+                            <Label className="flex items-center gap-2 text-sm font-medium">
+                              <Clock className="h-4 w-4" />
+                              Reset Period (hours)
+                            </Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={720}
+                              value={config.reset_period_hours}
+                              onChange={(e) => updateLocalConfig(category, 'reset_period_hours', Math.min(720, Math.max(1, parseInt(e.target.value) || 24)))}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              The message count limit resets after this many hours (default: 24h).
+                            </p>
+                          </div>
+                        </>
+                      )}
+
                       {/* Messages Count - Only for sequence and broadcast */}
                       {(category === 'sequence' || category === 'broadcast' || category === 'utility') && (
                         <div className="space-y-2">
@@ -841,6 +933,19 @@ export default function Configuration() {
                         <div className="text-sm text-muted-foreground">
                           Mode: <span className="font-medium">{SELECTION_MODE_LABELS[config.selection_mode]}</span>
                         </div>
+                        {(category === 'response' || category === 'comment_reply') && (
+                          <>
+                            <div className="text-sm text-muted-foreground">
+                              Delay: <span className="font-medium">
+                                {config.delay_seconds === 0 ? 'Instant' : `${config.delay_seconds}s`}
+                              </span>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Max: <span className="font-medium">{config.messages_count === 0 ? '∞' : config.messages_count}</span>
+                              <span className="ml-1">/ {config.reset_period_hours}h</span>
+                            </div>
+                          </>
+                        )}
                         {(category === 'sequence' || category === 'broadcast' || category === 'utility') && (
                           <div className="text-sm text-muted-foreground">
                             Send: <span className="font-medium">{config.messages_count} message(s)</span>
