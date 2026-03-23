@@ -73,7 +73,7 @@ const defaultUtilityContent: MessageContent = {
 
 export default function UtilityMessages() {
   const { currentPage, pages } = usePage();
-  const { messages, loading, createMessage, updateMessage, deleteMessage, refetch } = useMessages('broadcast');
+  const { messages, loading, createMessage, updateMessage, deleteMessage, refetch } = useMessages('utility');
   const { toast } = useToast();
   const { submitting: utilitySubmitting, createAndSubmitTemplate, checkTemplateStatus } = useUtilityTemplates();
   const [utilityRefreshing, setUtilityRefreshing] = useState(false);
@@ -437,7 +437,7 @@ export default function UtilityMessages() {
     try {
       const created = await createMessage({
         name: `Utility Template ${utilityMessages.length + 1}`,
-        category: 'broadcast',
+        category: 'utility',
         title: 'Utility Template',
         subtitle: '',
         is_active: true,
@@ -540,7 +540,7 @@ export default function UtilityMessages() {
 
           const created = await createMessage({
             name: srcMsg.name,
-            category: 'broadcast',
+            category: 'utility',
             title: srcMsg.title || 'Utility Template',
             subtitle: srcMsg.subtitle || '',
             is_active: false, // Draft — inactive by default

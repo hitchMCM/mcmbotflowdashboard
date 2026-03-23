@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Shuffle, Target, X, Plus } from "lucide-react";
+import { Shuffle, Target, Brain, X, Plus } from "lucide-react";
 import { 
   MessageCategory, 
   PageConfig, 
@@ -54,6 +54,7 @@ interface ConfigDialogProps {
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
   random: Shuffle,
   fixed: Target,
+  ai: Brain,
 };
 
 export function ConfigDialog({

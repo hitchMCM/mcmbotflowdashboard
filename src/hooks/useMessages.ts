@@ -297,15 +297,15 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchConfigs = useCallback(async () => {
+  const fetchConfigs = useCallback(async (background = false) => {
     if (!pageId) {
       setConfigs([]);
-      setLoading(false);
+      if (!background) setLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
 
       let query = supabase
         .from('page_configs')
@@ -324,7 +324,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       setError(err instanceof Error ? err.message : 'Failed to fetch configs');
       console.error('Error fetching page configs:', err);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [pageId, category]);
 
@@ -336,14 +336,15 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
     try {
       console.log('[usePageConfigs] Upserting config:', JSON.stringify(config, null, 2));
       
-      // First, try to find existing config by page_id and category only
-      // Use .limit(1) instead of .maybeSingle() to handle duplicates gracefully
+      // Find the most-recently-updated config row for this page+category.
+      // ORDER BY updated_at DESC ensures we always touch the freshest row even if
+      // duplicate rows exist (legacy data before the UNIQUE(page_id,category) constraint).
       const { data: existingList, error: selectError } = await supabase
         .from('page_configs')
         .select('id, name')
         .eq('page_id', config.page_id)
         .eq('category', config.category)
-        .order('created_at', { ascending: false })
+        .order('updated_at', { ascending: false })
         .limit(1);
       
       const existing = existingList?.[0] || null;
@@ -372,6 +373,9 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
           scheduled_times: config.scheduled_times || null,
           messages_count: config.messages_count !== undefined ? config.messages_count : 1,
           is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
+          ai_prompt: (config as any).ai_prompt ?? null,
+          ai_links: (config as any).ai_links ?? null,
+          ai_images: (config as any).ai_images ?? null,
           updated_at: new Date().toISOString(),
         };
         console.log('[usePageConfigs] Update data:', JSON.stringify(updateData, null, 2));
@@ -381,26 +385,15 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
           .update(updateData)
           .eq('id', existing.id);
         
-        // Fallback: if new columns don't exist in DB yet, retry without them
-        if (updateError && updateError.message?.includes('column')) {
-          console.warn('[usePageConfigs] New columns not found, retrying without delay_seconds/reset_period_hours');
-          const { delay_seconds: _ds, reset_period_hours: _rph, ...fallbackData } = updateData;
-          const { error: retryError } = await supabase
-            .from('page_configs')
-            .update(fallbackData)
-            .eq('id', existing.id);
-          updateError = retryError;
-        }
-        
         if (updateError) {
           console.error('[usePageConfigs] Update error:', updateError);
           throw updateError;
         }
         
-        // Verify the update was applied correctly
+        // Verify the update was applied correctly (includes AI fields for diagnostics)
         const { data: verifyData } = await supabase
           .from('page_configs')
-          .select('id, page_id, category, selected_message_ids')
+          .select('id, page_id, category, selected_message_ids, ai_prompt, ai_links, ai_images')
           .eq('id', existing.id)
           .single();
         console.log('[usePageConfigs] VERIFICATION after update:', JSON.stringify(verifyData, null, 2));
@@ -425,25 +418,15 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
           scheduled_times: config.scheduled_times || null,
           messages_count: config.messages_count !== undefined ? config.messages_count : 1,
           is_enabled: config.is_enabled !== undefined ? config.is_enabled : true,
+          ai_prompt: (config as any).ai_prompt ?? null,
+          ai_links: (config as any).ai_links ?? null,
+          ai_images: (config as any).ai_images ?? null,
         };
         let { data: inserted, error: insertError } = await supabase
           .from('page_configs')
           .insert(insertData)
           .select('id')
           .single();
-        
-        // Fallback: if new columns don't exist in DB yet, retry without them
-        if (insertError && insertError.message?.includes('column')) {
-          console.warn('[usePageConfigs] New columns not found, retrying without delay_seconds/reset_period_hours');
-          const { delay_seconds: _ds, reset_period_hours: _rph, ...fallbackInsert } = insertData;
-          const { data: retryData, error: retryError } = await supabase
-            .from('page_configs')
-            .insert(fallbackInsert)
-            .select('id')
-            .single();
-          inserted = retryData;
-          insertError = retryError;
-        }
         
         if (insertError) {
           console.error('[usePageConfigs] Insert error:', insertError);
@@ -454,8 +437,8 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
 
       console.log('[usePageConfigs] Config saved successfully:', resultId);
       
-      // Refetch to get the full config
-      await fetchConfigs();
+      // Refetch silently in background — do NOT toggle loading to avoid unmounting the parent
+      await fetchConfigs(true);
       
       return configs.find(c => c.id === resultId) || null;
     } catch (err: any) {
@@ -489,7 +472,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       });
       
       if (rpcError) throw rpcError;
-      await fetchConfigs();
+      await fetchConfigs(true);
       return true;
     } catch (err) {
       console.error('Error adding keyword:', err);
@@ -505,7 +488,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       });
       
       if (rpcError) throw rpcError;
-      await fetchConfigs();
+      await fetchConfigs(true);
       return true;
     } catch (err) {
       console.error('Error removing keyword:', err);
@@ -521,7 +504,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       });
       
       if (rpcError) throw rpcError;
-      await fetchConfigs();
+      await fetchConfigs(true);
       return true;
     } catch (err) {
       console.error('Error adding message:', err);
@@ -537,7 +520,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
       });
       
       if (rpcError) throw rpcError;
-      await fetchConfigs();
+      await fetchConfigs(true);
       return true;
     } catch (err) {
       console.error('Error removing message:', err);
@@ -560,7 +543,7 @@ export function usePageConfigs(pageId: string | null, category?: MessageCategory
         .eq('id', configId);
       
       if (updateError) throw updateError;
-      await fetchConfigs();
+      await fetchConfigs(true);
       return true;
     } catch (err) {
       console.error('Error setting mode:', err);
@@ -594,6 +577,7 @@ export function useMessagesByCategory() {
     sequence: [],
     broadcast: [],
     comment_reply: [],
+    utility: [],
   });
   const [loading, setLoading] = useState(true);
 
@@ -615,6 +599,7 @@ export function useMessagesByCategory() {
           sequence: [],
           broadcast: [],
           comment_reply: [],
+          utility: [],
         };
 
         (data || []).forEach(msg => {
@@ -648,6 +633,7 @@ export function useMessagesSummary() {
     sequence: { total: 0, active: 0 },
     broadcast: { total: 0, active: 0 },
     comment_reply: { total: 0, active: 0 },
+    utility: { total: 0, active: 0 },
   });
   const [loading, setLoading] = useState(true);
 
@@ -667,6 +653,7 @@ export function useMessagesSummary() {
           sequence: { total: 0, active: 0 },
           broadcast: { total: 0, active: 0 },
           comment_reply: { total: 0, active: 0 },
+          utility: { total: 0, active: 0 },
         };
 
         (data || []).forEach(row => {

@@ -388,11 +388,18 @@ export type Database = {
           fixed_message_id: string | null
           messages_count: number | null
           delay_hours: number[] | null
+          delay_seconds: number | null
+          reset_period_hours: number | null
           scheduled_time: string | null
+          scheduled_times: string[] | null
           scheduled_date: string | null
           trigger_keywords: string[] | null
           is_enabled: boolean | null
           times_triggered: number | null
+          ai_prompt: string | null
+          ai_links: string[] | null
+          ai_images: string[] | null
+          use_ai_response: boolean | null
           created_at: string
           updated_at: string | null
         }
@@ -406,11 +413,18 @@ export type Database = {
           fixed_message_id?: string | null
           messages_count?: number | null
           delay_hours?: number[] | null
+          delay_seconds?: number | null
+          reset_period_hours?: number | null
           scheduled_time?: string | null
+          scheduled_times?: string[] | null
           scheduled_date?: string | null
           trigger_keywords?: string[] | null
           is_enabled?: boolean | null
           times_triggered?: number | null
+          ai_prompt?: string | null
+          ai_links?: string[] | null
+          ai_images?: string[] | null
+          use_ai_response?: boolean | null
           created_at?: string
           updated_at?: string | null
         }
@@ -424,11 +438,18 @@ export type Database = {
           fixed_message_id?: string | null
           messages_count?: number | null
           delay_hours?: number[] | null
+          delay_seconds?: number | null
+          reset_period_hours?: number | null
           scheduled_time?: string | null
+          scheduled_times?: string[] | null
           scheduled_date?: string | null
           trigger_keywords?: string[] | null
           is_enabled?: boolean | null
           times_triggered?: number | null
+          ai_prompt?: string | null
+          ai_links?: string[] | null
+          ai_images?: string[] | null
+          use_ai_response?: boolean | null
           created_at?: string
           updated_at?: string | null
         }

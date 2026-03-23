@@ -5,7 +5,7 @@
 
 // 5 categories: Welcome, Standard Reply (response), Sequence, Broadcast, Comment Reply
 export type MessageCategory = 'welcome' | 'response' | 'sequence' | 'broadcast' | 'comment_reply' | 'utility';
-export type SelectionMode = 'random' | 'fixed';
+export type SelectionMode = 'random' | 'fixed' | 'ai';
 export type MediaType = 'image' | 'video' | 'audio' | 'file' | null;
 
 // =====================================================================================
@@ -307,6 +307,12 @@ export interface PageConfig {
   // Keywords (responses)
   trigger_keywords: string[];
   
+  // AI Response
+  ai_prompt: string | null;
+  ai_links: string[] | null;
+  ai_images: string[] | null;
+  use_ai_response: boolean;
+  
   // Status
   is_enabled: boolean;
   times_triggered: number;
@@ -332,6 +338,10 @@ export interface PageConfigInsert {
   scheduled_date?: string | null;
   trigger_keywords?: string[];
   is_enabled?: boolean;
+  ai_prompt?: string | null;
+  ai_links?: string[] | null;
+  ai_images?: string[] | null;
+  use_ai_response?: boolean;
 }
 
 export interface PageConfigUpdate extends Partial<PageConfigInsert> {}
@@ -426,10 +436,12 @@ export const CATEGORY_DESCRIPTIONS: Record<MessageCategory, string> = {
 export const SELECTION_MODE_LABELS: Record<SelectionMode, string> = {
   random: 'Random',
   fixed: 'Fixed',
+  ai: 'AI Response',
 };
 
 // Selection mode descriptions
 export const SELECTION_MODE_DESCRIPTIONS: Record<SelectionMode, string> = {
   random: 'Pick a random message from the selection (weighted)',
   fixed: 'Always use the same specific message',
+  ai: 'Use AI to generate a dynamic reply based on your instructions',
 };

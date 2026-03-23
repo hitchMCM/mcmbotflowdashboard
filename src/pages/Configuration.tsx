@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Loader2, 
   Settings2, 
@@ -22,7 +23,10 @@ import {
   CheckCircle,
   AlertCircle,
   Copy,
-  MessageCircle
+  MessageCircle,
+  Brain,
+  Plus,
+  X
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { usePage } from "@/contexts/PageContext";
@@ -71,7 +75,29 @@ const CATEGORY_ICONS: Record<MessageCategory, React.ElementType> = {
 const MODE_ICONS: Record<SelectionMode, React.ElementType> = {
   random: Shuffle,
   fixed: Target,
+  ai: Brain,
 };
+
+const DEFAULT_AI_PROMPT = `You are a warm, engaging chatbot for a dating/social platform.
+
+CRITICAL RULES:
+- Respond in the SAME language the user wrote in (ONE language only!)
+- Use the user's first name ONLY if it looks like a real name (not "Good", "there", etc.)
+- If the name doesn't look real, use a casual greeting instead ("Hey!" not "Hey Good!")
+- Keep responses SHORT (2-3 sentences max)
+- Be conversational and warm, NOT overly enthusiastic
+- Match the user's energy (if they say "good evening" → calm tone, if "hey!!!" → excited)
+- End with invitation + link on NEW LINE
+
+GOOD greetings when name is unclear:
+✅ "Hey! How's it going?"
+✅ "Hi there! What's up?"
+❌ "Hey Good!" (using a word as a name)
+
+Response structure:
+1. Greeting (with name only if real, otherwise casual "Hey!")
+2. Natural reaction to their message
+3. NEW LINE + invitation + plain link`;
 
 interface TriggerConfig {
   category: MessageCategory;
@@ -83,6 +109,69 @@ interface TriggerConfig {
   delay_hours: number[];
   scheduled_time: string | null;
   selected_message_ids: string[];
+  ai_prompt: string;
+  ai_links: string[];
+  ai_images: string[];
+}
+
+// Small reusable component to add/remove URL items in the AI section
+function AiResourceList({
+  category,
+  field,
+  items,
+  placeholder,
+  onUpdate,
+}: {
+  category: string;
+  field: string;
+  items: string[];
+  placeholder: string;
+  onUpdate: (items: string[]) => void;
+}) {
+  const [inputValue, setInputValue] = useState("");
+
+  const handleAdd = () => {
+    const trimmed = inputValue.trim();
+    if (trimmed && !items.includes(trimmed)) {
+      onUpdate([...items, trimmed]);
+      setInputValue("");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          placeholder={placeholder}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+          onBlur={handleAdd}
+          className="text-sm"
+        />
+        <Button type="button" size="icon" variant="outline" onClick={handleAdd}>
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      {items.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/40 text-sm group">
+              <span className="flex-1 truncate text-muted-foreground">{item}</span>
+              <button
+                type="button"
+                onClick={() => onUpdate(items.filter((_, i) => i !== idx))}
+                className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+                aria-label="Remove"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Configuration() {
@@ -91,7 +180,13 @@ export default function Configuration() {
   
   const [activeTab, setActiveTab] = useState<MessageCategory>("welcome");
   const [saving, setSaving] = useState(false);
-  const [changedCategories, setChangedCategories] = useState<Set<MessageCategory>>(new Set());
+  // Use a ref for dirty tracking — immune to React batching / async effect races
+  const dirtyRef = useRef<Set<MessageCategory>>(new Set());
+  const [, forceUpdate] = useState(0); // used only to trigger re-renders when dirtyRef changes
+  const markDirty = (category: MessageCategory) => { dirtyRef.current.add(category); forceUpdate(n => n + 1); };
+  const clearDirty = (category: MessageCategory) => { dirtyRef.current.delete(category); forceUpdate(n => n + 1); };
+  const clearAllDirty = () => { dirtyRef.current.clear(); forceUpdate(n => n + 1); };
+  const isDirty = (category: MessageCategory) => dirtyRef.current.has(category);
   const { timezone, t } = useSettings();
   
   // Clone configuration dialog state
@@ -119,7 +214,7 @@ export default function Configuration() {
   const sequenceMessages = useMessages('sequence');
   const broadcastMessages = useMessages('broadcast');
   const commentReplyMessages = useMessages('comment_reply');
-  const utilityMessagesRaw = useMessages('broadcast');
+  const utilityMessagesRaw = useMessages('utility');
   
   // Load page configs - pass the pageId
   console.log('[Configuration] Current page for usePageConfigs:', currentPage?.id, currentPage?.name);
@@ -134,12 +229,12 @@ export default function Configuration() {
   
   // Local state for editing
   const [triggerConfigs, setTriggerConfigs] = useState<Record<MessageCategory, TriggerConfig>>({
-    welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [1440], scheduled_time: null, selected_message_ids: [] },
-    broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [] },
-    utility: { category: 'utility', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [540], scheduled_time: null, selected_message_ids: [] },
+    welcome: { category: 'welcome', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [], ai_prompt: '', ai_links: [], ai_images: [] },
+    response: { category: 'response', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [], ai_prompt: DEFAULT_AI_PROMPT, ai_links: [], ai_images: [] },
+    comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [], ai_prompt: DEFAULT_AI_PROMPT, ai_links: [], ai_images: [] },
+    sequence: { category: 'sequence', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [1440], scheduled_time: null, selected_message_ids: [], ai_prompt: '', ai_links: [], ai_images: [] },
+    broadcast: { category: 'broadcast', is_enabled: true, selection_mode: 'fixed', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0], scheduled_time: null, selected_message_ids: [], ai_prompt: '', ai_links: [], ai_images: [] },
+    utility: { category: 'utility', is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [540], scheduled_time: null, selected_message_ids: [], ai_prompt: '', ai_links: [], ai_images: [] },
   });
 
   // Get messages for current category
@@ -152,10 +247,8 @@ export default function Configuration() {
       case 'broadcast': return broadcastMessages.messages;
       case 'utility': return utilityMessagesRaw.messages.filter((m: any) => {
         const payload = m.messenger_payload as any;
-        if (payload?._message_content?.message_type !== 'utility') return false;
-        // Only show templates scoped to the current page
+        // Only show templates scoped to the current page and approved by Meta
         if (payload?._page_id !== currentPage?.id) return false;
-        // Only show templates approved by Meta
         if (payload?._meta_template?.template_status !== 'APPROVED') return false;
         return true;
       });
@@ -163,22 +256,35 @@ export default function Configuration() {
     }
   };
 
-  // Load configs into local state when they arrive
+  // Reset original ref when page changes so stale change-tracking is cleared
   useEffect(() => {
-    console.log('[Configuration] useEffect triggered - configs:', configs.length, 'loading:', configsLoading);
-    console.log('[Configuration] Current page in effect:', currentPage?.id, currentPage?.name);
-    
+    originalConfigsRef.current = "";
+    clearAllDirty();
+  }, [currentPage?.id]);
+
+  // Load configs into local state when they arrive — ONLY on first load per page
+  useEffect(() => {
+    // If originalConfigsRef is already set, data was already loaded for this page.
+    // Don't overwrite — the user may have unsaved edits in triggerConfigs.
+    if (originalConfigsRef.current) return;
+
     if (configs.length > 0) {
-      console.log('[Configuration] Loading configs into local state:', configs.map(c => ({ id: c.id, category: c.category, page_id: c.page_id })));
-      const newConfigs = { ...triggerConfigs };
+      // Build the new config map from DB data — start from fixed defaults
+      const newConfigs: Record<MessageCategory, TriggerConfig> = {
+        welcome:       { category: 'welcome',       is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+        response:      { category: 'response',      is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: DEFAULT_AI_PROMPT, ai_links: [], ai_images: [] },
+        comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: DEFAULT_AI_PROMPT, ai_links: [], ai_images: [] },
+        sequence:      { category: 'sequence',      is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [1440], scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+        broadcast:     { category: 'broadcast',     is_enabled: true, selection_mode: 'fixed',  messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+        utility:       { category: 'utility',       is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [540],  scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+      };
       configs.forEach(cfg => {
         if (TRIGGER_CATEGORIES.includes(cfg.category)) {
           newConfigs[cfg.category] = {
             category: cfg.category,
             is_enabled: cfg.is_enabled,
-            selection_mode: cfg.selection_mode || 'random',
+            selection_mode: (cfg.selection_mode as SelectionMode) || 'random',
             messages_count: cfg.messages_count ?? 0,
-            // For response/comment_reply: delay_hours[0]=delay_seconds, delay_hours[1]=reset_period_hours
             delay_seconds: (cfg.category === 'response' || cfg.category === 'comment_reply')
               ? (cfg.delay_seconds ?? cfg.delay_hours?.[0] ?? 0)
               : (cfg.delay_seconds ?? 0),
@@ -188,39 +294,29 @@ export default function Configuration() {
             delay_hours: cfg.delay_hours || [0],
             scheduled_time: cfg.scheduled_time || null,
             selected_message_ids: cfg.selected_message_ids || [],
+            ai_prompt: (cfg as any).ai_prompt || DEFAULT_AI_PROMPT,
+            ai_links: (cfg as any).ai_links || [],
+            ai_images: (cfg as any).ai_images || [],
           };
         }
       });
+
       setTriggerConfigs(newConfigs);
-      // Store original for change detection
       originalConfigsRef.current = JSON.stringify(newConfigs);
-      setChangedCategories(new Set());
     } else if (!configsLoading && !originalConfigsRef.current) {
-      // No configs exist yet - initialize original with current defaults
-      // This allows detecting changes when creating new configs
-      originalConfigsRef.current = JSON.stringify(triggerConfigs);
+      // No configs exist yet - initialize both state and original ref from the same defaults
+      const defaultConfigs: Record<MessageCategory, TriggerConfig> = {
+        welcome:       { category: 'welcome',       is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+        response:      { category: 'response',      is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: DEFAULT_AI_PROMPT, ai_links: [], ai_images: [] },
+        comment_reply: { category: 'comment_reply', is_enabled: true, selection_mode: 'random', messages_count: 0, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: DEFAULT_AI_PROMPT, ai_links: [], ai_images: [] },
+        sequence:      { category: 'sequence',      is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [1440], scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+        broadcast:     { category: 'broadcast',     is_enabled: true, selection_mode: 'fixed',  messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [0],    scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+        utility:       { category: 'utility',       is_enabled: true, selection_mode: 'random', messages_count: 1, delay_seconds: 0, reset_period_hours: 24, delay_hours: [540],  scheduled_time: null, selected_message_ids: [], ai_prompt: '',               ai_links: [], ai_images: [] },
+      };
+      setTriggerConfigs(defaultConfigs);
+      originalConfigsRef.current = JSON.stringify(defaultConfigs);
     }
   }, [configs, configsLoading]);
-
-  // Detect changes when editing
-  useEffect(() => {
-    if (!originalConfigsRef.current) return;
-    
-    try {
-      const original = JSON.parse(originalConfigsRef.current);
-      const changed = new Set<MessageCategory>();
-      
-      TRIGGER_CATEGORIES.forEach(category => {
-        if (JSON.stringify(triggerConfigs[category]) !== JSON.stringify(original[category])) {
-          changed.add(category);
-        }
-      });
-      
-      setChangedCategories(changed);
-    } catch (e) {
-      // Ignore parse errors
-    }
-  }, [triggerConfigs]);
 
   const updateLocalConfig = (category: MessageCategory, field: keyof TriggerConfig, value: any) => {
     setTriggerConfigs(prev => ({
@@ -230,6 +326,7 @@ export default function Configuration() {
         [field]: value
       }
     }));
+    markDirty(category);
   };
 
   const toggleMessageSelection = (category: MessageCategory, messageId: string) => {
@@ -343,7 +440,10 @@ export default function Configuration() {
         delay_hours: delayHoursToSave,
         scheduled_time: (category === 'broadcast' || category === 'utility') ? scheduledTimeToSave : config.scheduled_time,
         scheduled_times: (category === 'broadcast' || category === 'utility') ? scheduledTimesToSave : null,
-        selected_message_ids: config.selected_message_ids,
+        selected_message_ids: config.selection_mode === 'ai' ? [] : config.selected_message_ids,
+        ai_prompt: config.ai_prompt || null,
+        ai_links: config.ai_links.length > 0 ? config.ai_links : null,
+        ai_images: config.ai_images.length > 0 ? config.ai_images : null,
       };
       
       console.log('[Configuration] Config to save:', JSON.stringify(configToSave, null, 2));
@@ -357,12 +457,7 @@ export default function Configuration() {
       currentOriginal[category] = { ...triggerConfigs[category] };
       originalConfigsRef.current = JSON.stringify(currentOriginal);
       
-      // Remove from changed set
-      setChangedCategories(prev => {
-        const next = new Set(prev);
-        next.delete(category);
-        return next;
-      });
+      clearDirty(category);
       
       toast({
         title: "✅ Configuration saved!",
@@ -578,25 +673,96 @@ export default function Configuration() {
                           onValueChange={(v) => updateLocalConfig(category, 'selection_mode', v as SelectionMode)}
                           className="space-y-2"
                         >
-                          {(['random', 'fixed'] as SelectionMode[]).map(mode => {
+                          {(
+                            (category === 'response' || category === 'comment_reply')
+                              ? (['random', 'fixed', 'ai'] as SelectionMode[])
+                              : (['random', 'fixed'] as SelectionMode[])
+                          ).map(mode => {
                             const ModeIcon = MODE_ICONS[mode];
                             return (
-                              <div key={mode} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                              <div key={mode} className={cn(
+                                "flex items-center space-x-3 p-3 rounded-lg border transition-colors",
+                                mode === 'ai'
+                                  ? "hover:bg-purple-500/10 border-purple-500/30"
+                                  : "hover:bg-muted/50"
+                              )}>
                                 <RadioGroupItem value={mode} id={`${category}-${mode}`} />
-                                <ModeIcon className="h-4 w-4 text-muted-foreground" />
+                                <ModeIcon className={cn("h-4 w-4", mode === 'ai' ? "text-purple-500" : "text-muted-foreground")} />
                                 <div className="flex-1">
-                                  <Label htmlFor={`${category}-${mode}`} className="cursor-pointer font-medium">
+                                  <Label htmlFor={`${category}-${mode}`} className={cn("cursor-pointer font-medium", mode === 'ai' && "text-purple-600 dark:text-purple-400")}>
                                     {SELECTION_MODE_LABELS[mode]}
                                   </Label>
                                   <p className="text-xs text-muted-foreground">
                                     {SELECTION_MODE_DESCRIPTIONS[mode]}
                                   </p>
                                 </div>
+                                {mode === 'ai' && (
+                                  <Badge variant="outline" className="text-purple-600 border-purple-400 text-[10px]">NEW</Badge>
+                                )}
                               </div>
                             );
                           })}
                         </RadioGroup>
                       </div>
+
+                      {/* AI Settings — shown when mode is 'ai' for response/comment_reply */}
+                      {(category === 'response' || category === 'comment_reply') && config.selection_mode === 'ai' && (
+                        <>
+                          <Separator />
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2">
+                              <Brain className="h-4 w-4 text-purple-500" />
+                              <Label className="text-sm font-medium">AI Configuration</Label>
+                            </div>
+
+                            {/* AI System Prompt */}
+                            <div className="space-y-2">
+                              <Label htmlFor={`${category}-ai-prompt`} className="text-xs font-medium text-muted-foreground uppercase">Instructions</Label>
+                              <Textarea
+                                id={`${category}-ai-prompt`}
+                                placeholder={DEFAULT_AI_PROMPT}
+                                value={config.ai_prompt || ''}
+                                onChange={(e) => updateLocalConfig(category, 'ai_prompt', e.target.value)}
+                                rows={5}
+                                className="resize-none text-sm"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Describe how the AI should respond. The user's message will be included automatically.
+                              </p>
+                            </div>
+
+                            {/* AI Links */}
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground uppercase">Links to include in replies</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Add URLs the AI can reference or share in its responses (website, booking page, shop…).
+                              </p>
+                              <AiResourceList
+                                category={category}
+                                field="ai_links"
+                                items={config.ai_links}
+                                placeholder="https://example.com/booking"
+                                onUpdate={(items) => updateLocalConfig(category, 'ai_links', items)}
+                              />
+                            </div>
+
+                            {/* AI Images */}
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground uppercase">Image links</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Add image URLs the AI can suggest or attach (product photos, menus, flyers…).
+                              </p>
+                              <AiResourceList
+                                category={category}
+                                field="ai_images"
+                                items={config.ai_images}
+                                placeholder="https://example.com/photo.jpg"
+                                onUpdate={(items) => updateLocalConfig(category, 'ai_images', items)}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       <Separator />
 
@@ -834,10 +1000,10 @@ export default function Configuration() {
                       {/* Save Button */}
                       <Button 
                         onClick={() => handleSave(category)} 
-                        disabled={saving || !changedCategories.has(category)} 
+                        disabled={saving || !isDirty(category)} 
                         className={cn(
                           "w-full transition-all duration-300",
-                          changedCategories.has(category) 
+                          isDirty(category) 
                             ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white animate-pulse shadow-lg shadow-orange-500/30" 
                             : ""
                         )}
@@ -847,7 +1013,7 @@ export default function Configuration() {
                             <Loader2 className="h-4 w-4 animate-spin mr-2" />
                             Saving...
                           </>
-                        ) : changedCategories.has(category) ? (
+                        ) : isDirty(category) ? (
                           <>
                             <Save className="h-4 w-4 mr-2" />
                             Save Changes
@@ -862,7 +1028,8 @@ export default function Configuration() {
                     </CardContent>
                   </Card>
 
-                  {/* Right: Message Selection */}
+                  {/* Right: Message Selection (hidden when AI mode is active) */}
+                  {config.selection_mode !== 'ai' ? (
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-lg">Select Messages</CardTitle>
@@ -918,6 +1085,35 @@ export default function Configuration() {
                       )}
                     </CardContent>
                   </Card>
+                  ) : (
+                  <Card className="border-purple-500/30 bg-purple-500/5">
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <Brain className="h-5 w-5 text-purple-500" />
+                        <CardTitle className="text-lg text-purple-600 dark:text-purple-400">AI Response Active</CardTitle>
+                      </div>
+                      <CardDescription>
+                        Replies will be generated by AI using your system prompt. No pre-written messages are needed.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="rounded-lg bg-purple-500/10 p-4 space-y-2">
+                        <p className="text-sm font-medium text-purple-700 dark:text-purple-300">How it works</p>
+                        <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                          <li>When a subscriber sends a message, it is forwarded to the AI model</li>
+                          <li>The AI generates a reply following your system prompt instructions</li>
+                          <li>The generated reply is sent back to the subscriber automatically</li>
+                          <li>The delay and rate-limit settings below still apply</li>
+                        </ul>
+                      </div>
+                      {(config.ai_links.length > 0 || config.ai_images.length > 0) && (
+                        <p className="text-xs text-muted-foreground mt-3">
+                          <span className="font-medium">{config.ai_links.length}</span> link(s) · <span className="font-medium">{config.ai_images.length}</span> image(s) configured
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                  )}
                 </div>
 
                 {/* Status Summary */}
@@ -931,7 +1127,7 @@ export default function Configuration() {
                           </Badge>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          Mode: <span className="font-medium">{SELECTION_MODE_LABELS[config.selection_mode]}</span>
+                          Mode: <span className={cn("font-medium", config.selection_mode === 'ai' && "text-purple-600 dark:text-purple-400")}>{SELECTION_MODE_LABELS[config.selection_mode]}</span>
                         </div>
                         {(category === 'response' || category === 'comment_reply') && (
                           <>
