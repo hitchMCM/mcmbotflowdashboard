@@ -1126,7 +1126,7 @@ export default function UtilityMessages() {
 
       {/* Clone from Page Dialog */}
       <Dialog open={showCloneDialog} onOpenChange={setShowCloneDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md flex flex-col max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Files className="h-5 w-5 text-blue-400" />
@@ -1136,7 +1136,7 @@ export default function UtilityMessages() {
               Select a page to clone all its utility templates into <strong>{currentPage?.name || 'current page'}</strong>. They will be saved as drafts — you will need to submit each one to Meta manually.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 flex-1 overflow-hidden flex flex-col min-h-0">
             {otherPages.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <p>No other pages available</p>
@@ -1144,7 +1144,7 @@ export default function UtilityMessages() {
             ) : (
               <>
                 <Label className="text-sm">Select source page</Label>
-                <ScrollArea className="max-h-[350px]">
+                <ScrollArea className="flex-1 min-h-0">
                   <div className="space-y-2">
                     {otherPages.map(page => {
                       const isSelected = cloneSourcePageId === page.id;

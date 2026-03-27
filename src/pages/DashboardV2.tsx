@@ -354,13 +354,13 @@ export default function Dashboard() {
               </div>
               <div className="text-center">
                 {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (
-                  <p className="text-2xl font-bold text-blue-400">{stats.subscribedCount}</p>
+                  <p className="text-2xl font-bold text-blue-400">{stats.totalSubscribers}</p>
                 )}
                 <p className="text-xs text-muted-foreground">Subscribed</p>
               </div>
               <div className="text-center">
                 {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (
-                  <p className="text-2xl font-bold text-red-400">{stats.unsubscribedCount}</p>
+                  <p className="text-2xl font-bold text-red-400">0</p>
                 )}
                 <p className="text-xs text-muted-foreground">Unsubscribed</p>
               </div>
