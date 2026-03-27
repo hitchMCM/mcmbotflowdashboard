@@ -1136,7 +1136,7 @@ export default function UtilityMessages() {
               Select a page to clone all its utility templates into <strong>{currentPage?.name || 'current page'}</strong>. They will be saved as drafts — you will need to submit each one to Meta manually.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="space-y-3 overflow-y-auto flex-1 pr-1">
             {otherPages.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <p>No other pages available</p>
@@ -1144,8 +1144,7 @@ export default function UtilityMessages() {
             ) : (
               <>
                 <Label className="text-sm">Select source page</Label>
-                <ScrollArea className="flex-1 min-h-0">
-                  <div className="space-y-2">
+                <div className="space-y-2">
                     {otherPages.map(page => {
                       const isSelected = cloneSourcePageId === page.id;
                       const templateCount = getUtilityMessagesForPage(page.id).length;
@@ -1181,8 +1180,7 @@ export default function UtilityMessages() {
                         </div>
                       );
                     })}
-                  </div>
-                </ScrollArea>
+                </div>
                 {cloneSourcePageId && (
                   <div className="rounded-lg bg-muted/30 border border-dashed p-3 text-sm text-muted-foreground">
                     <strong>{getUtilityMessagesForPage(cloneSourcePageId).length}</strong> template(s) will be cloned as <Badge variant="secondary" className="text-[10px] ml-1">Draft</Badge> into <strong>{currentPage?.name}</strong>.
