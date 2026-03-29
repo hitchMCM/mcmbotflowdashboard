@@ -247,7 +247,8 @@ export default function Configuration() {
       case 'broadcast': return broadcastMessages.messages;
       case 'utility': return utilityMessagesRaw.messages.filter((m: any) => {
         const payload = m.messenger_payload as any;
-        // Only show templates scoped to the current page and approved by Meta
+        // Only show templates scoped to the current page, with utility message_type, and approved by Meta
+        if (payload?._message_content?.message_type !== 'utility') return false;
         if (payload?._page_id !== currentPage?.id) return false;
         if (payload?._meta_template?.template_status !== 'APPROVED') return false;
         return true;
@@ -517,42 +518,62 @@ export default function Configuration() {
         return;
       }
 
-      // Delete existing configs for current page
-      await supabase
-        .from('page_configs')
-        .delete()
-        .eq('page_id', currentPage.id);
-
-      // Clone configs to current page - use spread operator to create new arrays (deep copy)
+      // Clone configs to current page — insert FIRST, delete after (safe rollback if insert fails)
       console.log('[Configuration] Cloning from page:', cloneFromPageId);
       console.log('[Configuration] Cloning TO page:', currentPage.id, currentPage.name);
       console.log('[Configuration] Source configs:', sourceConfigs.map(c => ({ id: c.id, category: c.category, selected_message_ids: c.selected_message_ids })));
       
-      const newConfigs = sourceConfigs.map(config => ({
+      // Exclude utility category — each page has its own Meta-approved templates
+      const configsToClone = sourceConfigs.filter(c => c.category !== 'utility');
+
+      const newConfigs = configsToClone.map(config => ({
         page_id: currentPage.id,
         category: config.category,
         name: config.name,
-        selected_message_ids: [...(config.selected_message_ids || [])],
+        // selected_message_ids intentionally cleared: message IDs belong to the source page, not this one
+        selected_message_ids: [],
         selection_mode: config.selection_mode,
-        fixed_message_id: config.fixed_message_id,
+        fixed_message_id: null,
         messages_count: config.messages_count,
+        delay_seconds: config.delay_seconds ?? 0,
+        reset_period_hours: config.reset_period_hours ?? 24,
         delay_hours: [...(config.delay_hours || [])],
         scheduled_time: config.scheduled_time,
         scheduled_times: config.scheduled_times ? [...config.scheduled_times] : null,
         scheduled_date: config.scheduled_date,
         trigger_keywords: [...(config.trigger_keywords || [])],
-        is_enabled: config.is_enabled
+        is_enabled: config.is_enabled,
+        ai_prompt: (config as any).ai_prompt || null,
+        ai_links: (config as any).ai_links || [],
+        ai_images: (config as any).ai_images || [],
       }));
       
       console.log('[Configuration] New configs to insert:', newConfigs.map(c => ({ page_id: c.page_id, category: c.category, selected_message_ids: c.selected_message_ids })));
 
-      const { data: insertedData, error: insertError } = await supabase
-        .from('page_configs')
-        .insert(newConfigs)
-        .select('id, page_id, category, selected_message_ids');
+      // Insert new configs FIRST — if this fails we abort without losing existing configs
+      let insertedIds: string[] = [];
+      if (newConfigs.length > 0) {
+        const { data: insertedData, error: insertError } = await supabase
+          .from('page_configs')
+          .insert(newConfigs)
+          .select('id, page_id, category, selected_message_ids');
 
-      if (insertError) throw insertError;
-      
+        if (insertError) throw insertError;
+        insertedIds = (insertedData || []).map(r => r.id);
+        console.log('[Configuration] INSERT RESULT - configs created:', insertedData);
+      }
+
+      // Insert succeeded — now safe to delete old configs (excluding utility which was not cloned)
+      let deleteQuery = supabase
+        .from('page_configs')
+        .delete()
+        .eq('page_id', currentPage.id)
+        .neq('category', 'utility');
+      if (insertedIds.length > 0) {
+        deleteQuery = deleteQuery.not('id', 'in', `(${insertedIds.join(',')})`);
+      }
+      await deleteQuery;
+
       console.log('[Configuration] INSERT RESULT - configs created:', insertedData);
 
       // Find source page name for success message
