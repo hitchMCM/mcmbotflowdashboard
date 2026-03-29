@@ -24,6 +24,7 @@ interface PageContextType {
   setCurrentPage: (page: Page) => void;
   loading: boolean;
   refreshPages: () => Promise<void>;
+  silentRefresh: () => Promise<void>;
   currentUserId: string | null;
 }
 
@@ -162,6 +163,39 @@ export function PageProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('current_page_id', page.id);
   };
 
+  // Reload pages data without triggering the full-screen loading spinner
+  const silentRefresh = async () => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from('pages')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
+      if (error || !data) return;
+      const loadedPages: Page[] = data.map((row: any) => ({
+        id: row.id,
+        facebook_page_id: row.facebook_page_id || row.fb_page_id,
+        name: row.name || row.page_name || 'Unnamed Page',
+        avatar_url: row.avatar_url,
+        is_active: row.is_active ?? true,
+        subscribers_count: row.subscribers_count || 0,
+        access_token: row.access_token_webhook || row.access_token,
+        user_id: row.user_id
+      }));
+      setPages(loadedPages);
+      // Keep current page in sync with fresh data
+      const savedPageId = localStorage.getItem('current_page_id');
+      if (savedPageId) {
+        const fresh = loadedPages.find(p => p.id === savedPageId);
+        if (fresh) setCurrentPage(fresh);
+      }
+    } catch (e) {
+      console.error('[PageContext] silentRefresh error:', e);
+    }
+  };
+
   return (
     <PageContext.Provider 
       value={{ 
@@ -170,6 +204,7 @@ export function PageProvider({ children }: { children: ReactNode }) {
         setCurrentPage: handleSetCurrentPage, 
         loading,
         refreshPages: loadPages,
+        silentRefresh,
         currentUserId
       }}
     >

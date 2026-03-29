@@ -100,6 +100,7 @@ export function PageSelector() {
                 onClick={() => {
                   setCurrentPage(page);
                   setOpen(false);
+                  window.location.reload();
                 }}
                 className={cn(
                   "flex items-center gap-3 p-3 cursor-pointer",

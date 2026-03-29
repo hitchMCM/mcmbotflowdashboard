@@ -104,7 +104,7 @@ export function Sidebar() {
             {pages.map((page) => (
               <DropdownMenuItem
                 key={page.id}
-                onClick={() => setCurrentPage(page)}
+                onClick={() => { setCurrentPage(page); window.location.reload(); }}
                 className="cursor-pointer focus:bg-white/10"
               >
                 <Avatar className="h-6 w-6 mr-2">
