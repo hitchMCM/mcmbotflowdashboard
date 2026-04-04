@@ -246,10 +246,17 @@ export function generateMessengerPayload(content: MessageContent): any {
         }
 
         // Build the utility payload
+        // Sanitize template name to match what was submitted to Meta (lowercase, underscores only)
+        const sanitizedTemplateName = (util.template_name || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
         payload.messaging_type = "UTILITY";
         payload.message = {
           template: {
-            name: util.template_name,
+            name: sanitizedTemplateName,
             language: { code: util.language || "en" },
             ...(components.length > 0 ? { components } : {})
           }

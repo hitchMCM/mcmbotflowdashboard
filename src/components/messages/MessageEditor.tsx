@@ -359,21 +359,23 @@ export function MessageEditor({
       const allText = allTexts.join(' ');
       const matches = allText.match(/\{\{(\d+)\}\}/g);
       const maxVar = matches ? Math.max(...matches.map(m => parseInt(m.replace(/[{}]/g, '')))) : 0;
-      while (updated.example_values.length < maxVar) {
-        updated.example_values.push('');
-      }
-      if (maxVar > 0 && updated.example_values.length > maxVar) {
-        updated.example_values = updated.example_values.slice(0, maxVar);
-      }
-      // Keep param_labels in sync
-      const labels = updated.param_labels || [];
-      while (labels.length < maxVar) {
-        labels.push('');
-      }
-      if (maxVar > 0 && labels.length > maxVar) {
-        updated.param_labels = labels.slice(0, maxVar);
+      if (maxVar === 0) {
+        // No variables anywhere — clear both arrays so n8n doesn't send stale params
+        updated.example_values = [];
+        updated.param_labels = [];
       } else {
-        updated.param_labels = labels;
+        while (updated.example_values.length < maxVar) {
+          updated.example_values.push('');
+        }
+        if (updated.example_values.length > maxVar) {
+          updated.example_values = updated.example_values.slice(0, maxVar);
+        }
+        // Keep param_labels in sync
+        const labels = updated.param_labels || [];
+        while (labels.length < maxVar) {
+          labels.push('');
+        }
+        updated.param_labels = labels.length > maxVar ? labels.slice(0, maxVar) : labels;
       }
     }
     onChange({ ...value, utility: updated });

@@ -511,16 +511,27 @@ export function useUtilityTemplates() {
       const existingPayload = (current?.messenger_payload as Record<string, any>) || {};
 
       // 2. Build _meta_template object
+      // Compute actual variable count from the body text to avoid stale param_labels
+      const allBodyTexts = [
+        utility.header_text || '',
+        utility.body_text || '',
+        (utility.buttons || []).map(b => (b.url || '') + ' ' + (b.payload || '')).join(' '),
+        utility.button_url || '',
+        utility.button_payload || '',
+      ];
+      const actualVarOrder = extractOrderedVariables(allBodyTexts);
+      const actualVarCount = actualVarOrder.length;
+
       const metaTemplate: Record<string, any> = {
-        template_name: utility.template_name?.trim().toLowerCase().replace(/\s+/g, '_'),
+        template_name: (utility.template_name || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''),
         template_language: utility.language || 'en',
         template_status: result.status || 'PENDING',
         template_id: result.template_id || null,
         rejection_reason: result.rejection_reason || null,
         submitted_at: new Date().toISOString(),
         components: buildTemplateComponents(utility),
-        example_values: utility.example_values || [],
-        param_labels: utility.param_labels || [],
+        example_values: actualVarCount > 0 ? (utility.example_values || []).slice(0, actualVarCount) : [],
+        param_labels: actualVarCount > 0 ? (utility.param_labels || []).slice(0, actualVarCount) : [],
       };
 
       // 3. Merge into messenger_payload
