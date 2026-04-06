@@ -51,6 +51,7 @@ function getMetaTemplate(msg: Message | null | undefined): {
   template_language?: string;
   rejection_reason?: string;
   submitted_at?: string;
+  facebook_page_id?: string;
 } | null {
   if (!msg) return null;
   return (msg.messenger_payload as any)?._meta_template || null;
@@ -94,6 +95,9 @@ export default function UtilityMessages() {
   const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [cloneSourcePageId, setCloneSourcePageId] = useState<string | null>(null);
   const [cloning, setCloning] = useState(false);
+  const [cloneDialogLoading, setCloneDialogLoading] = useState(false);
+  // Map pageId → array of utility templates fetched fresh from DB
+  const [cloneableTemplates, setCloneableTemplates] = useState<Record<string, Message[]>>({});
 
   // Guide section
   const [showGuide, setShowGuide] = useState(false);
@@ -105,56 +109,60 @@ export default function UtilityMessages() {
   const [messageContent, setMessageContent] = useState<MessageContent>(defaultUtilityContent);
 
   // Auto-assign legacy utility messages (no _page_id) to the current page
+  // SAFE ONLY when user has a single page — with multiple pages we cannot determine
+  // which page each legacy template belongs to, so we skip auto-assign to avoid
+  // cross-page contamination (root cause of Meta error 100).
   const [legacyMigrated, setLegacyMigrated] = useState(false);
   useEffect(() => {
-    // Don't run while messages are still loading, or if already migrated
     if (loading || !currentPage?.id || legacyMigrated) return;
-    // Only consider utility messages
+    // Only auto-assign if user has exactly one page — otherwise it's ambiguous
+    if (pages.length > 1) {
+      setLegacyMigrated(true);
+      return;
+    }
     const allUtility = messages.filter(m => {
       const payload = m.messenger_payload as any;
       return payload?._message_content?.message_type === 'utility';
     });
-    // If there are no utility messages at all, nothing to migrate
-    if (allUtility.length === 0) {
-      setLegacyMigrated(true);
-      return;
-    }
+    if (allUtility.length === 0) { setLegacyMigrated(true); return; }
     const legacyMsgs = allUtility.filter(m => {
       const payload = m.messenger_payload as any;
       return !payload?._page_id;
     });
-    if (legacyMsgs.length === 0) {
-      setLegacyMigrated(true);
-      return;
-    }
-    // Patch each legacy message with _page_id in the DB
-    console.log(`[UtilityMessages] Found ${legacyMsgs.length} legacy utility messages without _page_id, assigning to page ${currentPage.id}`);
+    if (legacyMsgs.length === 0) { setLegacyMigrated(true); return; }
+    console.log(`[UtilityMessages] Single-page user: assigning ${legacyMsgs.length} legacy templates to page ${currentPage.id}`);
     (async () => {
       for (const msg of legacyMsgs) {
         const existingPayload = (msg.messenger_payload as Record<string, any>) || {};
-        const updatedPayload = { ...existingPayload, _page_id: currentPage.id };
+        const updatedPayload = {
+          ...existingPayload,
+          _page_id: currentPage.id,
+          _facebook_page_id: currentPage.facebook_page_id,
+        };
         const { error } = await supabase.from('messages').update({ messenger_payload: updatedPayload }).eq('id', msg.id);
-        if (error) {
-          console.error(`[UtilityMessages] Failed to assign _page_id to message ${msg.id}:`, error);
-        } else {
-          console.log(`[UtilityMessages] Assigned _page_id=${currentPage.id} to legacy message ${msg.id}`);
-        }
+        if (error) console.error(`[UtilityMessages] Failed to assign _page_id to message ${msg.id}:`, error);
       }
       setLegacyMigrated(true);
       await refetch();
     })();
-  }, [messages, loading, currentPage?.id, legacyMigrated, refetch]);
+  }, [messages, loading, currentPage?.id, currentPage?.facebook_page_id, pages.length, legacyMigrated, refetch]);
 
-  // Filter only utility messages from broadcast category, scoped to the current page
+  // Filter utility messages scoped to the current page.
+  // Guards:
+  //  1. _page_id must match the Supabase page UUID
+  //  2. If _facebook_page_id is stored it must match the Facebook Page ID
+  //     (prevents templates accidentally assigned to the wrong page from showing up)
   const utilityMessages = useMemo(() => {
     if (!currentPage?.id) return [];
     return messages.filter(m => {
       const payload = m.messenger_payload as any;
       if (payload?._message_content?.message_type !== 'utility') return false;
-      // Strictly match page_id
-      return payload?._page_id === currentPage.id;
+      if (payload?._page_id !== currentPage.id) return false;
+      // If _facebook_page_id is stored and doesn't match → wrong page, exclude
+      if (payload?._facebook_page_id && payload._facebook_page_id !== currentPage.facebook_page_id) return false;
+      return true;
     });
-  }, [messages, currentPage?.id]);
+  }, [messages, currentPage?.id, currentPage?.facebook_page_id]);
 
   const sortedMessages = useMemo(() => 
     [...utilityMessages].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
@@ -282,16 +290,29 @@ export default function UtilityMessages() {
       return;
     }
 
+    // Block if this template was previously submitted to Meta under a DIFFERENT Facebook page.
+    // Sending from the wrong page would result in Meta error 100 (template not found).
+    const existingMeta = getMetaTemplate(selectedMessage);
+    if (existingMeta?.facebook_page_id && existingMeta.facebook_page_id !== currentPage.facebook_page_id) {
+      toast({
+        title: "⚠️ Mauvaise page Facebook",
+        description: `Ce template a été soumis avec la page Facebook ID ${existingMeta.facebook_page_id}. La page actuelle est ${currentPage.facebook_page_id}. Créez un nouveau template depuis cette page.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Step 1: Save first (silently — no toast yet)
     setSaving(true);
     try {
       const legacyData = convertMessageContentToLegacy(messageContent);
 
-      // Preserve _page_id and _meta_template from existing messenger_payload
+      // Preserve _page_id, _facebook_page_id and _meta_template from existing messenger_payload
       const existingPayload = (selectedMessage.messenger_payload as Record<string, any>) || {};
       legacyData.messenger_payload = {
         ...legacyData.messenger_payload,
         _page_id: existingPayload._page_id || currentPage?.id || null,
+        _facebook_page_id: existingPayload._facebook_page_id || currentPage?.facebook_page_id || null,
         _meta_template: existingPayload._meta_template || undefined,
       };
 
@@ -329,6 +350,19 @@ export default function UtilityMessages() {
 
     if (result.success) {
       setLastSubmitError(null);
+
+      // Sync the normalized template_name back into the editor state so the UI always
+      // reflects what was actually sent to Meta (avoids name mismatch on next save).
+      const normalizedName = (messageContent.utility?.template_name || '')
+        .trim().toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+      if (normalizedName !== messageContent.utility?.template_name) {
+        setMessageContent(prev => ({
+          ...prev,
+          utility: prev.utility ? { ...prev.utility, template_name: normalizedName } : prev.utility,
+        }));
+      }
+
       toast({
         title: result.status === 'APPROVED' ? "✅ Template approved!" : "📩 Template submitted to Meta",
         description: result.status === 'APPROVED'
@@ -394,11 +428,12 @@ export default function UtilityMessages() {
     try {
       const legacyData = convertMessageContentToLegacy(messageContent);
 
-      // Preserve _page_id and _meta_template from existing messenger_payload
+      // Preserve _page_id, _facebook_page_id and _meta_template from existing messenger_payload
       const existingPayload = (selectedMessage.messenger_payload as Record<string, any>) || {};
       legacyData.messenger_payload = {
         ...legacyData.messenger_payload,
         _page_id: existingPayload._page_id || currentPage?.id || null,
+        _facebook_page_id: existingPayload._facebook_page_id || currentPage?.facebook_page_id || null,
         _meta_template: existingPayload._meta_template || undefined,
       };
 
@@ -443,6 +478,7 @@ export default function UtilityMessages() {
         is_active: true,
         messenger_payload: {
           _page_id: currentPage.id,
+          _facebook_page_id: currentPage.facebook_page_id,
           _message_content: {
             message_type: 'utility',
             utility: {
@@ -496,14 +532,38 @@ export default function UtilityMessages() {
   };
 
   // ====== CLONE FROM ANOTHER PAGE ======
-  // Get utility messages for a given page from the full messages list
-  const getUtilityMessagesForPage = useCallback((pageId: string) => {
-    return messages.filter(m => {
-      const payload = m.messenger_payload as any;
-      if (payload?._message_content?.message_type !== 'utility') return false;
-      return payload?._page_id === pageId;
-    });
-  }, [messages]);
+  // Fetch utility templates for all other pages directly from Supabase (bypasses local state
+  // which may be stale or miss messages stored as category='broadcast' in old format)
+  const fetchCloneableTemplates = useCallback(async () => {
+    setCloneDialogLoading(true);
+    try {
+      const userId = (() => {
+        try { const u = localStorage.getItem('mcm_user'); return u ? JSON.parse(u).id : null; } catch { return null; }
+      })();
+      // Fetch both 'utility' and 'broadcast' categories — old templates may still be 'broadcast'
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .in('category', ['utility', 'broadcast'])
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const grouped: Record<string, Message[]> = {};
+      for (const msg of (data || [])) {
+        if (userId && msg.user_id && msg.user_id !== userId) continue;
+        const payload = msg.messenger_payload as any;
+        if (payload?._message_content?.message_type !== 'utility') continue;
+        const pageId = payload?._page_id as string | undefined;
+        if (!pageId) continue;
+        if (!grouped[pageId]) grouped[pageId] = [];
+        grouped[pageId].push(msg as Message);
+      }
+      setCloneableTemplates(grouped);
+    } catch (err) {
+      console.error('[UtilityMessages] fetchCloneableTemplates error:', err);
+    } finally {
+      setCloneDialogLoading(false);
+    }
+  }, []);
 
   const handleCloneFromPage = async () => {
     if (!cloneSourcePageId || !currentPage?.id) return;
@@ -512,7 +572,7 @@ export default function UtilityMessages() {
     let failCount = 0;
 
     try {
-      const sourceTemplates = getUtilityMessagesForPage(cloneSourcePageId);
+      const sourceTemplates = cloneableTemplates[cloneSourcePageId] || [];
       if (sourceTemplates.length === 0) {
         toast({ title: '⚠️ No templates', description: 'The selected page has no utility templates to clone.', variant: 'destructive' });
         setCloning(false);
@@ -535,6 +595,7 @@ export default function UtilityMessages() {
           legacyData.messenger_payload = {
             ...legacyData.messenger_payload,
             _page_id: currentPage.id,
+            _facebook_page_id: currentPage.facebook_page_id,
             _meta_template: undefined, // Draft — user must submit to Meta manually
           };
 
@@ -582,7 +643,9 @@ export default function UtilityMessages() {
 
   const openCloneDialog = () => {
     setCloneSourcePageId(null);
+    setCloneableTemplates({});
     setShowCloneDialog(true);
+    fetchCloneableTemplates();
   };
 
   // Other pages the user owns (excluding current page)
@@ -1137,7 +1200,12 @@ export default function UtilityMessages() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 overflow-y-auto flex-1 pr-1">
-            {otherPages.length === 0 ? (
+            {cloneDialogLoading ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Loading templates...</span>
+              </div>
+            ) : otherPages.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <p>No other pages available</p>
               </div>
@@ -1147,7 +1215,7 @@ export default function UtilityMessages() {
                 <div className="space-y-2">
                     {otherPages.map(page => {
                       const isSelected = cloneSourcePageId === page.id;
-                      const templateCount = getUtilityMessagesForPage(page.id).length;
+                      const templateCount = (cloneableTemplates[page.id] || []).length;
                       return (
                         <div
                           key={page.id}
@@ -1183,7 +1251,7 @@ export default function UtilityMessages() {
                 </div>
                 {cloneSourcePageId && (
                   <div className="rounded-lg bg-muted/30 border border-dashed p-3 text-sm text-muted-foreground">
-                    <strong>{getUtilityMessagesForPage(cloneSourcePageId).length}</strong> template(s) will be cloned as <Badge variant="secondary" className="text-[10px] ml-1">Draft</Badge> into <strong>{currentPage?.name}</strong>.
+                    <strong>{(cloneableTemplates[cloneSourcePageId] || []).length}</strong> template(s) will be cloned as <Badge variant="secondary" className="text-[10px] ml-1">Draft</Badge> into <strong>{currentPage?.name}</strong>.
                     You will need to submit each to Meta for approval.
                   </div>
                 )}
@@ -1196,7 +1264,7 @@ export default function UtilityMessages() {
             </Button>
             <Button
               onClick={handleCloneFromPage}
-              disabled={cloning || !cloneSourcePageId || getUtilityMessagesForPage(cloneSourcePageId || '').length === 0}
+              disabled={cloning || cloneDialogLoading || !cloneSourcePageId || (cloneableTemplates[cloneSourcePageId || ''] || []).length === 0}
               className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
             >
               {cloning ? (

@@ -529,14 +529,20 @@ export function useUtilityTemplates() {
         template_id: result.template_id || null,
         rejection_reason: result.rejection_reason || null,
         submitted_at: new Date().toISOString(),
+        // Track WHICH Facebook page this template was submitted under.
+        // This is the key that prevents cross-page error 100: if a template was
+        // approved under facebook_page_id "111", it cannot be sent from page "222".
+        facebook_page_id: currentPage?.facebook_page_id || null,
         components: buildTemplateComponents(utility),
         example_values: actualVarCount > 0 ? (utility.example_values || []).slice(0, actualVarCount) : [],
         param_labels: actualVarCount > 0 ? (utility.param_labels || []).slice(0, actualVarCount) : [],
       };
 
-      // 3. Merge into messenger_payload
+      // 3. Merge into messenger_payload — also stamp _facebook_page_id at the top level
+      //    so the utilityMessages filter can exclude cross-page templates
       const updatedPayload = {
         ...existingPayload,
+        _facebook_page_id: currentPage?.facebook_page_id || existingPayload._facebook_page_id || null,
         _meta_template: metaTemplate,
       };
 
@@ -559,7 +565,7 @@ export function useUtilityTemplates() {
       console.error('[useUtilityTemplates] Error saving to DB:', err);
       return false;
     }
-  }, []);
+  }, [currentPage]);
 
   // =====================================================================================
   // Full flow: Submit + Save (Steps 2-5 combined)

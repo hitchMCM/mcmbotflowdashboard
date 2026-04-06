@@ -574,8 +574,6 @@ export default function Configuration() {
       }
       await deleteQuery;
 
-      console.log('[Configuration] INSERT RESULT - configs created:', insertedData);
-
       // Find source page name for success message
       const sourcePage = pages.find(p => p.id === cloneFromPageId);
       toast({

@@ -1112,10 +1112,20 @@ export function MessageEditor({
             <Input
               placeholder="order_delivery_update"
               value={value.utility?.template_name || ""}
-              onChange={(e) => updateUtility({ template_name: e.target.value })}
+              onChange={(e) => {
+                // Normalize in real-time to match exactly what Meta will register:
+                // lowercase, replace any non-alphanumeric/underscore with _, collapse __, no leading/trailing _
+                const raw = e.target.value;
+                const normalized = raw
+                  .toLowerCase()
+                  .replace(/[^a-z0-9_]/g, '_')
+                  .replace(/_+/g, '_')
+                  .replace(/^_/, '');
+                updateUtility({ template_name: normalized });
+              }}
             />
             <p className="text-xs text-muted-foreground">
-              Exact template name registered on your Page (lowercase letters, numbers and underscores only).
+              Lowercase letters, numbers and underscores only — normalized automatically to match Meta's format.
             </p>
           </div>
 
