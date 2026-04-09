@@ -365,7 +365,7 @@ export default function AutoPost() {
       const result = await duplicateConfigToPages(config, selectedPageIds);
       if (result.success.length > 0) {
         toast({
-          title: "Duplicated!",
+          title: "Cloned!",
           description: `Schedule cloned and activated on ${result.success.length} page${result.success.length > 1 ? "s" : ""}`,
         });
       }
@@ -507,7 +507,7 @@ export default function AutoPost() {
                   Clone from another page
                 </DialogTitle>
                 <DialogDescription>
-                  Select a page to copy its auto-post schedule to <strong>{currentPage?.name}</strong>. The cloned schedule starts paused.
+                  Select a page to copy its auto-post schedule to <strong>{currentPage?.name}</strong>. The cloned schedule is activated immediately.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2 max-h-64 overflow-y-auto py-2">
@@ -925,7 +925,7 @@ export default function AutoPost() {
               Duplicate Schedule
             </DialogTitle>
             <DialogDescription>
-              Clone this auto-post configuration to other pages. Cloned schedules start paused.
+              Clone this auto-post configuration to other pages. Cloned schedules are activated immediately.
             </DialogDescription>
           </DialogHeader>
 
@@ -1006,7 +1006,7 @@ export default function AutoPost() {
               Clone from another page
             </DialogTitle>
             <DialogDescription>
-              Select a page to copy its auto-post schedule to <strong>{currentPage?.name}</strong>. The cloned schedule starts paused.
+              Select a page to copy its auto-post schedule to <strong>{currentPage?.name}</strong>. The cloned schedule is activated immediately.
             </DialogDescription>
           </DialogHeader>
 

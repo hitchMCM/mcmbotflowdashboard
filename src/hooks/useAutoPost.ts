@@ -384,18 +384,24 @@ export async function duplicateConfigToPages(
       };
 
       if (existing) {
-        // Update existing config
+        // Update existing config — realtime UPDATE event fires automatically
         const { error } = await supabase
           .from('post_schedule_config')
           .update(configData)
           .eq('page_id', targetPageId);
         if (error) throw error;
       } else {
-        // Insert new config
-        const { error } = await supabase
+        // Insert new config then immediately UPDATE to trigger N8N realtime listener
+        const { error: insertError } = await supabase
           .from('post_schedule_config')
           .insert(configData);
-        if (error) throw error;
+        if (insertError) throw insertError;
+
+        const { error: touchError } = await supabase
+          .from('post_schedule_config')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('page_id', targetPageId);
+        if (touchError) throw touchError;
       }
 
       success.push(targetPageId);
@@ -448,16 +454,24 @@ export async function cloneConfigFromPage(
     };
 
     if (existing) {
+      // Update existing config — realtime UPDATE event fires automatically
       const { error } = await supabase
         .from('post_schedule_config')
         .update(configData)
         .eq('page_id', targetPageId);
       if (error) throw error;
     } else {
-      const { error } = await supabase
+      // Insert new config then immediately UPDATE to trigger N8N realtime listener
+      const { error: insertError } = await supabase
         .from('post_schedule_config')
         .insert(configData);
-      if (error) throw error;
+      if (insertError) throw insertError;
+
+      const { error: touchError } = await supabase
+        .from('post_schedule_config')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('page_id', targetPageId);
+      if (touchError) throw touchError;
     }
 
     return true;

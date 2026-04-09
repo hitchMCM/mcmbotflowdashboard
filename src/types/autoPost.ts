@@ -53,6 +53,7 @@ export interface PostScheduleConfig {
   default_caption: string;
   is_active: boolean;
   last_posted_at: string | null;
+  last_posted_times: string[] | null;  // Per-slot timestamps, parallel to post_times[]
   created_at: string;
   updated_at: string;
 }
