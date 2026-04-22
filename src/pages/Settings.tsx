@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil, Save, HardDrive, Link2, CheckCircle2, ArrowRight, ExternalLink, Unplug } from "lucide-react";
+import { Settings as SettingsIcon, Globe, Users, Plus, Copy, Trash2, Loader2, Sun, Moon, Monitor, Key, Eye, EyeOff, Pencil, Save, HardDrive, Link2, CheckCircle2, ArrowRight, ExternalLink, Unplug, UsersRound } from "lucide-react";
 import { useGoogleDriveConnection } from "@/hooks/useAutoPost";
 import { extractGoogleDriveFolderId } from "@/types/autoPost";
 import { cn } from "@/lib/utils";
@@ -44,9 +44,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 const tabs = [
   { id: "general", icon: SettingsIcon },
   { id: "pages", icon: Globe },
+  { id: "groups", icon: UsersRound },
   { id: "integrations", icon: Link2 },
   { id: "team", icon: Users },
 ];
+
+interface FacebookGroup {
+  id: string;
+  group_id: string;
+  group_name: string;
+  user_id: string;
+  is_active: boolean;
+  linked_page_ids: string[];
+  created_at: string;
+}
 
 interface Page {
   id: string;
@@ -98,6 +109,128 @@ export default function Settings() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [pageToDelete, setPageToDelete] = useState<Page | null>(null);
   const [deletingPage, setDeletingPage] = useState(false);
+
+  // ── Groups state ──────────────────────────────────────────────────────────
+  const [groups, setGroups] = useState<FacebookGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
+  const [newGroupId, setNewGroupId] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<FacebookGroup | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [groupPageLinks, setGroupPageLinks] = useState<Record<string, string[]>>({});
+  const [savingGroupLinks, setSavingGroupLinks] = useState<string | null>(null);
+
+  const loadGroups = async () => {
+    if (!user?.id) return;
+    setGroupsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('facebook_groups')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) {
+        // Table may not exist yet — show empty state silently
+        console.warn('[loadGroups]', error.message);
+        setGroups([]);
+        setGroupPageLinks({});
+        return;
+      }
+      const loaded = (data || []) as FacebookGroup[];
+      setGroups(loaded);
+      // Init link state
+      const links: Record<string, string[]> = {};
+      loaded.forEach(g => { links[g.id] = g.linked_page_ids || []; });
+      setGroupPageLinks(links);
+    } catch (err: any) {
+      console.warn('[loadGroups] unexpected error:', err.message);
+      setGroups([]);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  const handleAddGroup = async () => {
+    if (!newGroupId.trim() || !newGroupName.trim()) {
+      toast({ title: "❌ Error", description: "Fill in Group ID and Group Name", variant: "destructive" });
+      return;
+    }
+    if (!user?.id) return;
+    setAddingGroup(true);
+    try {
+      const { error } = await supabase
+        .from('facebook_groups')
+        .insert({ group_id: newGroupId.trim(), group_name: newGroupName.trim(), user_id: user.id, is_active: true, linked_page_ids: [] });
+      if (error) throw error;
+      toast({ title: "✅ Group added!", description: `"${newGroupName}" added successfully` });
+      setShowAddGroupDialog(false);
+      setNewGroupId("");
+      setNewGroupName("");
+      await loadGroups();
+    } catch (err: any) {
+      toast({ title: "❌ Error", description: err.message, variant: "destructive" });
+    } finally {
+      setAddingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!groupToDelete) return;
+    setDeletingGroup(true);
+    try {
+      const { error } = await supabase
+        .from('facebook_groups')
+        .delete()
+        .eq('id', groupToDelete.id);
+      if (error) throw error;
+      toast({ title: "🗑️ Deleted", description: `Group "${groupToDelete.group_name}" deleted` });
+      setGroupToDelete(null);
+      await loadGroups();
+    } catch (err: any) {
+      toast({ title: "❌ Error", description: err.message, variant: "destructive" });
+    } finally {
+      setDeletingGroup(false);
+    }
+  };
+
+  const handleToggleGroupActive = async (group: FacebookGroup) => {
+    try {
+      const { error } = await supabase
+        .from('facebook_groups')
+        .update({ is_active: !group.is_active })
+        .eq('id', group.id);
+      if (error) throw error;
+      setGroups(prev => prev.map(g => g.id === group.id ? { ...g, is_active: !g.is_active } : g));
+    } catch (err: any) {
+      toast({ title: "❌ Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const togglePageLink = (groupId: string, pageId: string) => {
+    setGroupPageLinks(prev => {
+      const current = prev[groupId] || [];
+      return { ...prev, [groupId]: current.includes(pageId) ? current.filter(id => id !== pageId) : [...current, pageId] };
+    });
+  };
+
+  const handleSaveGroupLinks = async (groupId: string) => {
+    setSavingGroupLinks(groupId);
+    try {
+      const { error } = await supabase
+        .from('facebook_groups')
+        .update({ linked_page_ids: groupPageLinks[groupId] || [] })
+        .eq('id', groupId);
+      if (error) throw error;
+      toast({ title: "✅ Saved!", description: "Page links updated" });
+      setGroups(prev => prev.map(g => g.id === groupId ? { ...g, linked_page_ids: groupPageLinks[groupId] || [] } : g));
+    } catch (err: any) {
+      toast({ title: "❌ Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingGroupLinks(null);
+    }
+  };
 
   // Google Drive connection wizard
   const { connection: driveConnection, loading: driveLoading, connect: connectDrive, disconnect: disconnectDrive, deleteConnection: deleteDriveConnection, refresh: refreshDrive } = useGoogleDriveConnection(currentPage?.id || null);
@@ -340,7 +473,7 @@ export default function Settings() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => { setActiveTab(tab.id); if (tab.id === "groups") loadGroups(); }}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
                   activeTab === tab.id ? "bg-gradient-primary text-primary-foreground" : "text-muted-foreground hover:bg-white/5"
@@ -566,6 +699,151 @@ export default function Settings() {
                   <div className="text-center py-12">
                     <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <p className="text-muted-foreground">Team management coming soon...</p>
+                  </div>
+                )}
+
+                {activeTab === "groups" && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                        <UsersRound className="h-5 w-5 text-primary" />
+                        Facebook Groups
+                      </h3>
+                      <Button
+                        onClick={() => { loadGroups(); setShowAddGroupDialog(true); }}
+                        size="sm"
+                        className="bg-gradient-primary gap-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Group
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Link Facebook groups to your pages. When a page auto-posts, it will also share the same content in the linked groups.
+                    </p>
+
+                    {/* Load groups on tab open */}
+                    {groups.length === 0 && !groupsLoading && (
+                      <div
+                        className="text-center py-16 text-muted-foreground cursor-pointer"
+                        onClick={loadGroups}
+                      >
+                        <UsersRound className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                        <p className="text-sm">No groups added yet.</p>
+                        <p className="text-xs mt-1">Click <strong>Add Group</strong> to get started.</p>
+                      </div>
+                    )}
+
+                    {groupsLoading && (
+                      <div className="flex justify-center py-10">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      {groups.map((group) => {
+                        const currentLinks = groupPageLinks[group.id] || [];
+                        const hasChanges = JSON.stringify(currentLinks.slice().sort()) !== JSON.stringify((group.linked_page_ids || []).slice().sort());
+                        return (
+                          <div
+                            key={group.id}
+                            className="rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden"
+                          >
+                            {/* Group header */}
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                                  <UsersRound className="h-5 w-5 text-white" />
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-sm">{group.group_name}</p>
+                                  <p className="text-xs text-muted-foreground font-mono">{group.group_id}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleToggleGroupActive(group)}
+                                  className={cn(
+                                    "text-xs px-3 py-1 rounded-full border transition-all",
+                                    group.is_active
+                                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                      : "bg-white/5 border-white/10 text-muted-foreground"
+                                  )}
+                                >
+                                  {group.is_active ? "Active" : "Paused"}
+                                </button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-red-400"
+                                  onClick={() => setGroupToDelete(group)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Pages linked to this group */}
+                            <div className="px-5 py-4 space-y-3">
+                              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Pages that post in this group
+                              </p>
+                              {pages.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">No pages available. Add a page first.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {pages.map((page) => {
+                                    const linked = currentLinks.includes(page.id);
+                                    return (
+                                      <label
+                                        key={page.id}
+                                        onClick={() => togglePageLink(group.id, page.id)}
+                                        className={cn(
+                                          "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                                          linked
+                                            ? "border-primary/40 bg-primary/5"
+                                            : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
+                                        )}
+                                      >
+                                        <div className={cn(
+                                          "w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
+                                          linked ? "border-primary bg-primary" : "border-white/20"
+                                        )}>
+                                          {linked && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                        </div>
+                                        {page.avatar_url ? (
+                                          <img src={page.avatar_url} alt={page.name} className="w-7 h-7 rounded-full object-cover" />
+                                        ) : (
+                                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold">
+                                            {page.name.charAt(0)}
+                                          </div>
+                                        )}
+                                        <span className="text-sm font-medium truncate">{page.name}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {hasChanges && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveGroupLinks(group.id)}
+                                  disabled={savingGroupLinks === group.id}
+                                  className="mt-2 gap-2 bg-gradient-primary"
+                                >
+                                  {savingGroupLinks === group.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Save className="h-3.5 w-3.5" />
+                                  )}
+                                  Save changes
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -972,6 +1250,76 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Group Dialog */}
+      <Dialog open={showAddGroupDialog} onOpenChange={setShowAddGroupDialog}>
+        <DialogContent className="glass border-white/10 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UsersRound className="h-5 w-5 text-primary" />
+              Add Facebook Group
+            </DialogTitle>
+            <DialogDescription>
+              Enter your Facebook Group ID and a display name.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Group Name</Label>
+              <Input
+                placeholder="e.g. My Marketing Group"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="bg-white/5 border-white/10"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Facebook Group ID</Label>
+              <Input
+                placeholder="e.g. 123456789012345"
+                value={newGroupId}
+                onChange={(e) => setNewGroupId(e.target.value)}
+                className="bg-white/5 border-white/10 font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Find it in your group URL: facebook.com/groups/<strong>GROUP_ID</strong>
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddGroupDialog(false)} className="border-white/10">
+              Cancel
+            </Button>
+            <Button onClick={handleAddGroup} disabled={addingGroup} className="bg-gradient-primary gap-2">
+              {addingGroup && <Loader2 className="h-4 w-4 animate-spin" />}
+              Add Group
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Group Confirmation */}
+      <AlertDialog open={!!groupToDelete} onOpenChange={(open) => { if (!open) setGroupToDelete(null); }}>
+        <AlertDialogContent className="glass border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{groupToDelete?.group_name}"? This will remove all page links for this group.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteGroup}
+              disabled={deletingGroup}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingGroup && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Google Drive Connection Wizard */}
       <Dialog open={showDriveWizard} onOpenChange={setShowDriveWizard}>

@@ -54,6 +54,7 @@ export interface PostScheduleConfig {
   is_active: boolean;
   last_posted_at: string | null;
   last_posted_times: string[] | null;  // Per-slot timestamps, parallel to post_times[]
+  slot_group_ids: string[][] | null;   // Per-slot group IDs for cross-posting
   created_at: string;
   updated_at: string;
 }
@@ -68,6 +69,7 @@ export interface PostScheduleConfigInsert {
   subfolder_names?: string[];
   custom_caption?: string | null;
   is_active?: boolean;
+  slot_group_ids?: string[][];
 }
 
 // A single scheduled post slot (time + caption + subfolder)
@@ -76,6 +78,8 @@ export interface PostSlot {
   caption: string;           // Caption for this slot
   subfolder_drive_id: string; // Subfolder to pull file from
   subfolder_name: string;     // Subfolder display name
+  share_to_groups: boolean;  // Whether to also post to linked groups
+  group_ids: string[];       // IDs of facebook_groups rows to post to
 }
 
 // Posted Files History

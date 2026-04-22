@@ -199,26 +199,6 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Demo credentials hint */}
-          <div className="mt-6 p-4 bg-primary/5 border border-primary/20 rounded-lg">
-            <p className="text-xs text-muted-foreground text-center">
-              <span className="font-medium text-primary">Demo:</span> admin@mcm.com / admin123
-            </p>
-          </div>
-
-          {/* Register link */}
-          <div className="mt-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link 
-                to="/register" 
-                className="text-primary hover:underline font-medium"
-              >
-                Create Account
-              </Link>
-            </p>
-          </div>
-
           {/* Back to home */}
           <div className="mt-4 text-center">
             <Link 

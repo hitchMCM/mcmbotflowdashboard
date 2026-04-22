@@ -262,20 +262,19 @@ export function usePostSchedule(pageId: string | null) {
     fetchConfig();
   }, [fetchConfig]);
 
-  const saveConfig = async (configData: PostScheduleConfigInsert): Promise<boolean> => {
-    if (!pageId) return false;
+  const saveConfig = async (configData: PostScheduleConfigInsert): Promise<{ ok: boolean; error?: string }> => {
+    if (!pageId) return { ok: false, error: 'No page selected' };
+
+    // Separate slot_group_ids — save it in a follow-up call to avoid schema cache issues
+    const { slot_group_ids, ...mainData } = configData as any;
 
     try {
       setError(null);
 
       if (config) {
-        // Update existing
         const { data, error: updateError } = await supabase
           .from('post_schedule_config')
-          .update({
-            ...configData,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ ...mainData, updated_at: new Date().toISOString() })
           .eq('page_id', pageId)
           .select('*')
           .maybeSingle();
@@ -283,10 +282,9 @@ export function usePostSchedule(pageId: string | null) {
         if (updateError) throw updateError;
         setConfig(data);
       } else {
-        // Insert new
         const { data, error: insertError } = await supabase
           .from('post_schedule_config')
-          .insert(configData)
+          .insert(mainData)
           .select('*')
           .maybeSingle();
 
@@ -294,11 +292,23 @@ export function usePostSchedule(pageId: string | null) {
         setConfig(data);
       }
 
-      return true;
+      // Try saving slot_group_ids separately — silently ignore if column not yet in schema cache
+      if (slot_group_ids !== undefined) {
+        try {
+          await supabase
+            .from('post_schedule_config')
+            .update({ slot_group_ids })
+            .eq('page_id', pageId);
+        } catch (e) {
+          console.warn('[saveConfig] slot_group_ids save failed (schema cache?)', e);
+        }
+      }
+
+      return { ok: true };
     } catch (err: any) {
       setError(err.message);
       console.error('[usePostSchedule] Save error:', err);
-      return false;
+      return { ok: false, error: err.message };
     }
   };
 
@@ -531,4 +541,47 @@ export function usePostedFiles(pageId: string | null, limit = 20) {
   }, [fetchFiles]);
 
   return { files, loading, stats, refresh: fetchFiles };
+}
+
+// =====================================================================================
+// useLinkedGroups — fetch Facebook groups that have this page in their linked_page_ids
+// =====================================================================================
+
+export interface LinkedFacebookGroup {
+  id: string;
+  group_id: string;
+  group_name: string;
+  is_active: boolean;
+  linked_page_ids: string[];
+}
+
+export function useLinkedGroups(pageId: string | null) {
+  const [groups, setGroups] = useState<LinkedFacebookGroup[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const userId = getCurrentUserId();
+    if (!pageId || !userId) { setGroups([]); return; }
+    setLoading(true);
+    supabase
+      .from('facebook_groups')
+      .select('id, group_id, group_name, is_active, linked_page_ids')
+      .eq('user_id', userId)
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('[useLinkedGroups]', error.message);
+          setGroups([]);
+        } else {
+          // Filter client-side: keep only groups that have this pageId linked
+          const linked = ((data || []) as LinkedFacebookGroup[]).filter(
+            (g) => Array.isArray(g.linked_page_ids) && g.linked_page_ids.includes(pageId)
+          );
+          console.log('[useLinkedGroups] all:', data?.length, '→ linked to page:', linked.length);
+          setGroups(linked);
+        }
+        setLoading(false);
+      });
+  }, [pageId]);
+
+  return { groups, loading };
 }

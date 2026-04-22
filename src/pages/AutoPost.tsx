@@ -7,9 +7,11 @@ import {
   useGoogleDriveSubfolders,
   usePostSchedule,
   usePostedFiles,
+  useLinkedGroups,
   duplicateConfigToPages,
   cloneConfigFromPage,
 } from "@/hooks/useAutoPost";
+import type { LinkedFacebookGroup } from "@/hooks/useAutoPost";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { PostSlot, GoogleDriveSubfolder } from "@/types/autoPost";
@@ -57,6 +59,7 @@ import {
   Sparkles,
   Send,
   Copy,
+  UsersRound,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -78,6 +81,7 @@ function PostSlotCard({
   onUpdate,
   onRemove,
   canRemove,
+  linkedGroups,
 }: {
   slot: PostSlot;
   index: number;
@@ -85,6 +89,7 @@ function PostSlotCard({
   onUpdate: (i: number, updates: Partial<PostSlot>) => void;
   onRemove: (i: number) => void;
   canRemove: boolean;
+  linkedGroups: LinkedFacebookGroup[];
 }) {
   return (
     <motion.div
@@ -181,6 +186,66 @@ function PostSlotCard({
         />
       </div>
 
+      {/* Share to groups */}
+      <div className="px-5 pb-4 border-t border-white/5 pt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <UsersRound className="h-4 w-4 text-blue-400" />
+            <span>Share to groups</span>
+          </div>
+          <Switch
+            checked={slot.share_to_groups}
+            onCheckedChange={(v) =>
+              onUpdate(index, { share_to_groups: v, group_ids: v ? slot.group_ids : [] })
+            }
+          />
+        </div>
+        {slot.share_to_groups && linkedGroups.length === 0 && (
+          <div className="flex items-start gap-2.5 px-3 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm">
+            <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium text-amber-300">No groups linked to this page</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Go to <strong className="text-foreground">Settings → Groups</strong>, add a Facebook Group and select this page as a publisher.
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Also make sure this page's account is a <strong className="text-foreground">member/admin of the group</strong> on Facebook.
+              </p>
+              <button
+                onClick={() => window.location.href = "/settings"}
+                className="mt-1 text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2"
+              >
+                Go to Settings →
+              </button>
+            </div>
+          </div>
+        )}
+        {slot.share_to_groups && linkedGroups.length > 0 && (
+          <div className="space-y-1 pt-1">
+            {linkedGroups.map((g) => (
+              <label
+                key={g.id}
+                className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer hover:bg-white/5 transition-colors"
+              >
+                <Checkbox
+                  checked={slot.group_ids.includes(g.id)}
+                  onCheckedChange={(v) => {
+                    const ids = v
+                      ? [...slot.group_ids, g.id]
+                      : slot.group_ids.filter((id) => id !== g.id);
+                    onUpdate(index, { group_ids: ids });
+                  }}
+                />
+                <span className="text-sm flex-1">{g.group_name}</span>
+                {!g.is_active && (
+                  <Badge variant="secondary" className="text-[10px]">inactive</Badge>
+                )}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Footer */}
       <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -225,10 +290,11 @@ export default function AutoPost() {
     deleteConfig,
   } = usePostSchedule(pageId);
   const { files: postedFiles, stats } = usePostedFiles(pageId, 50);
+  const { groups: linkedGroups } = useLinkedGroups(pageId);
 
   // Form state
   const [postSlots, setPostSlots] = useState<PostSlot[]>([
-    { time: "09:00", caption: "", subfolder_drive_id: "", subfolder_name: "" },
+    { time: "09:00", caption: "", subfolder_drive_id: "", subfolder_name: "", share_to_groups: false, group_ids: [] },
   ]);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -251,17 +317,20 @@ export default function AutoPost() {
       const captions: string[] = config.captions || [];
       const subIds: string[] = config.subfolder_ids || [];
       const subNames: string[] = config.subfolder_names || [];
+      const slotGroupIds: string[][] = config.slot_group_ids || [];
       setPostSlots(
         times.map((time, i) => ({
           time,
           caption: captions[i] || "",
           subfolder_drive_id: subIds[i] || "",
           subfolder_name: subNames[i] || "",
+          share_to_groups: (slotGroupIds[i]?.length ?? 0) > 0,
+          group_ids: slotGroupIds[i] || [],
         }))
       );
     } else {
       // No config for this page — reset to empty
-      setPostSlots([{ time: "09:00", caption: "", subfolder_drive_id: "", subfolder_name: "" }]);
+      setPostSlots([{ time: "09:00", caption: "", subfolder_drive_id: "", subfolder_name: "", share_to_groups: false, group_ids: [] }]);
     }
   }, [config]);
 
@@ -272,12 +341,14 @@ export default function AutoPost() {
     const savedCaptions = config.captions || [];
     const savedSubIds = config.subfolder_ids || [];
     const savedSubNames = config.subfolder_names || [];
+    const savedGroupIds = config.slot_group_ids || [];
     if (postSlots.length !== savedTimes.length) return true;
     return postSlots.some((slot, i) => (
       slot.time !== (savedTimes[i] || "") ||
       slot.caption !== (savedCaptions[i] || "") ||
       slot.subfolder_drive_id !== (savedSubIds[i] || "") ||
-      slot.subfolder_name !== (savedSubNames[i] || "")
+      slot.subfolder_name !== (savedSubNames[i] || "") ||
+      JSON.stringify(slot.group_ids) !== JSON.stringify(savedGroupIds[i] || [])
     ));
   }, [config, postSlots]);
 
@@ -297,6 +368,8 @@ export default function AutoPost() {
         caption: "",
         subfolder_drive_id: "",
         subfolder_name: "",
+        share_to_groups: false,
+        group_ids: [],
       },
     ]);
   };
@@ -325,7 +398,7 @@ export default function AutoPost() {
 
     setSaving(true);
     try {
-      const success = await saveConfig({
+      const result = await saveConfig({
         page_id: pageId,
         subfolder_id: postSlots[0]?.subfolder_drive_id || "",
         subfolder_name: postSlots[0]?.subfolder_name || "",
@@ -333,16 +406,17 @@ export default function AutoPost() {
         captions: postSlots.map((s) => s.caption || ""),
         subfolder_ids: postSlots.map((s) => s.subfolder_drive_id),
         subfolder_names: postSlots.map((s) => s.subfolder_name),
+        slot_group_ids: postSlots.map((s) => s.group_ids),
         is_active: true,
       });
 
-      if (success) {
+      if (result.ok) {
         toast({ title: "Saved!", description: "Auto-post schedule configured" });
       } else {
-        toast({ title: "Error", description: "Failed to save", variant: "destructive" });
+        toast({ title: "Error", description: result.error || "Failed to save", variant: "destructive" });
       }
-    } catch {
-      toast({ title: "Error", description: "An error occurred", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "An error occurred", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -418,7 +492,7 @@ export default function AutoPost() {
     const success = await deleteConfig();
     if (success) {
       toast({ title: "Deleted", description: "Schedule removed" });
-      setPostSlots([{ time: "09:00", caption: "", subfolder_drive_id: "", subfolder_name: "" }]);
+      setPostSlots([{ time: "09:00", caption: "", subfolder_drive_id: "", subfolder_name: "", share_to_groups: false, group_ids: [] }]);
     }
     setShowDeleteConfirm(false);
   };
@@ -755,6 +829,7 @@ export default function AutoPost() {
                           onUpdate={updatePostSlot}
                           onRemove={removePostSlot}
                           canRemove={postSlots.length > 1}
+                          linkedGroups={linkedGroups}
                         />
                       ))}
                     </AnimatePresence>

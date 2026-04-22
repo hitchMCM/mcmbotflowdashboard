@@ -20,7 +20,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \n  psc.id as config_id,\n  psc.page_id,\n  psc.current_file_index,\n  psc.captions,\n  p.facebook_page_id,\n  p.access_token_webhook as access_token,\n  p.name as page_name,\n  -- Find the slot index matching NOW\n  (\n    SELECT i - 1\n    FROM generate_series(1, array_length(psc.post_times, 1)) i\n    WHERE DATE_TRUNC('minute', psc.post_times[i]::TIME) = DATE_TRUNC('minute', CURRENT_TIME::TIME)\n    LIMIT 1\n  ) as time_index,\n  psc.subfolder_ids,\n  psc.subfolder_names,\n  psc.last_posted_times\nFROM post_schedule_config psc\nJOIN pages p ON p.id = psc.page_id\nWHERE psc.is_active = true\n  AND p.is_active = true\n  AND DATE_TRUNC('minute', CURRENT_TIME::TIME) = ANY(\n    ARRAY(SELECT DATE_TRUNC('minute', t) FROM UNNEST(psc.post_times) AS t)\n  )\n  -- Per-slot deduplication: only block if THIS SPECIFIC SLOT already posted today\n  AND (\n    psc.last_posted_times IS NULL\n    OR array_length(psc.last_posted_times, 1) IS NULL\n    OR psc.last_posted_times[(\n        SELECT i\n        FROM generate_series(1, array_length(psc.post_times, 1)) i\n        WHERE DATE_TRUNC('minute', psc.post_times[i]::TIME) = DATE_TRUNC('minute', CURRENT_TIME::TIME)\n        LIMIT 1\n      )] IS NULL\n    OR DATE(psc.last_posted_times[(\n        SELECT i\n        FROM generate_series(1, array_length(psc.post_times, 1)) i\n        WHERE DATE_TRUNC('minute', psc.post_times[i]::TIME) = DATE_TRUNC('minute', CURRENT_TIME::TIME)\n        LIMIT 1\n      )]) < CURRENT_DATE\n  );",
+        "query": "SELECT \n  psc.id as config_id,\n  psc.page_id,\n  psc.current_file_index,\n  psc.captions,\n  psc.slot_group_ids,\n  p.facebook_page_id,\n  p.access_token_webhook as access_token,\n  p.name as page_name,\n  -- Find the slot index matching NOW\n  (\n    SELECT i - 1\n    FROM generate_series(1, array_length(psc.post_times, 1)) i\n    WHERE DATE_TRUNC('minute', psc.post_times[i]::TIME) = DATE_TRUNC('minute', CURRENT_TIME::TIME)\n    LIMIT 1\n  ) as time_index,\n  psc.subfolder_ids,\n  psc.subfolder_names,\n  psc.last_posted_times\nFROM post_schedule_config psc\nJOIN pages p ON p.id = psc.page_id\nWHERE psc.is_active = true\n  AND p.is_active = true\n  AND DATE_TRUNC('minute', CURRENT_TIME::TIME) = ANY(\n    ARRAY(SELECT DATE_TRUNC('minute', t) FROM UNNEST(psc.post_times) AS t)\n  )\n  -- Per-slot deduplication: only block if THIS SPECIFIC SLOT already posted today\n  AND (\n    psc.last_posted_times IS NULL\n    OR array_length(psc.last_posted_times, 1) IS NULL\n    OR psc.last_posted_times[(\n        SELECT i\n        FROM generate_series(1, array_length(psc.post_times, 1)) i\n        WHERE DATE_TRUNC('minute', psc.post_times[i]::TIME) = DATE_TRUNC('minute', CURRENT_TIME::TIME)\n        LIMIT 1\n      )] IS NULL\n    OR DATE(psc.last_posted_times[(\n        SELECT i\n        FROM generate_series(1, array_length(psc.post_times, 1)) i\n        WHERE DATE_TRUNC('minute', psc.post_times[i]::TIME) = DATE_TRUNC('minute', CURRENT_TIME::TIME)\n        LIMIT 1\n      )]) < CURRENT_DATE\n  );",
         "options": {
           "connectionTimeout": 5000000
         }
@@ -83,7 +83,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const loopData = $input.first().json;\n\n// Get the slot index matching the current time\nconst timeIndex = loopData.time_index;\n\n// If time_index is null/undefined, default to 0\nconst safeIndex = timeIndex !== null && timeIndex !== undefined ? timeIndex : 0;\n\n// Extract the correct subfolder for this slot\nconst subfolderIds = loopData.subfolder_ids || [];\nconst subfolderNames = loopData.subfolder_names || [];\n\nconst currentSubfolderId = subfolderIds[safeIndex] || subfolderIds[0];\nconst currentSubfolderName = subfolderNames[safeIndex] || subfolderNames[0];\n\nreturn [{\n  json: {\n    ...loopData,\n    current_subfolder_id: currentSubfolderId,\n    current_subfolder_name: currentSubfolderName,\n    time_index: safeIndex\n  }\n}];"
+        "jsCode": "const loopData = $input.first().json;\n\nconst timeIndex = loopData.time_index;\nconst safeIndex = timeIndex !== null && timeIndex !== undefined ? timeIndex : 0;\n\nconst subfolderIds = loopData.subfolder_ids || [];\nconst subfolderNames = loopData.subfolder_names || [];\n\nconst currentSubfolderId = subfolderIds[safeIndex] || subfolderIds[0];\nconst currentSubfolderName = subfolderNames[safeIndex] || subfolderNames[0];\n\n// Extract group IDs for this slot from slot_group_ids (JSONB array of arrays)\nlet slotGroupIds = [];\ntry {\n  const sgRaw = loopData.slot_group_ids;\n  const sgArr = typeof sgRaw === 'string' ? JSON.parse(sgRaw) : (sgRaw || []);\n  slotGroupIds = (sgArr[safeIndex] || []);\n} catch(e) {\n  slotGroupIds = [];\n}\n\nreturn [{\n  json: {\n    ...loopData,\n    current_subfolder_id: currentSubfolderId,\n    current_subfolder_name: currentSubfolderName,\n    time_index: safeIndex,\n    slot_group_ids_for_slot: slotGroupIds\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -116,7 +116,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get all files from Google Drive\nconst allFiles = $input.all();\n\n// Get config data from the loop\nconst loopData = $('Loop_Over_Configs').item.json;\nconst timeIndex = loopData.time_index;\nconst subfolderIds = loopData.subfolder_ids;\nconst subfolderNames = loopData.subfolder_names;\n\n// Filter only images and videos\nconst imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/jpg'];\nconst videoTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];\n\nconst mediaFiles = allFiles.filter(item => {\n  const mimeType = item.json.mimeType;\n  return imageTypes.includes(mimeType) || videoTypes.includes(mimeType);\n});\n\nif (mediaFiles.length === 0) {\n  return [{ \n    json: {\n      error: 'No media files found in subfolder',\n      config_id: loopData.config_id,\n      page_id: loopData.page_id\n    }\n  }];\n}\n\n// Sort by name for stable, predictable ordering\nmediaFiles.sort((a, b) => a.json.name.localeCompare(b.json.name));\n\n// Get current index from config\nconst currentIndex = loopData.current_file_index;\n\n// Wrap around with modulo\nconst fileIndex = currentIndex % mediaFiles.length;\n\nconst selectedFile = mediaFiles[fileIndex].json;\n\nconst fileType = imageTypes.includes(selectedFile.mimeType) ? 'image' : 'video';\n\nconst nextIndex = currentIndex + 1;\n\nreturn [{ \n  json: {\n    file_id: selectedFile.id,\n    file_name: selectedFile.name,\n    file_type: fileType,\n    mime_type: selectedFile.mimeType,\n    current_index: currentIndex,\n    next_index: nextIndex,\n    total_files: mediaFiles.length,\n    config_id: loopData.config_id,\n    page_id: loopData.page_id,\n    facebook_page_id: loopData.facebook_page_id,\n    access_token: loopData.access_token,\n    time_index: timeIndex,\n    subfolder_id: subfolderIds[timeIndex],\n    subfolder_name: subfolderNames[timeIndex]\n  }\n}];"
+        "jsCode": "// Get all files from Google Drive\nconst allFiles = $input.all();\n\n// Get config data from the loop\nconst loopData = $('Loop_Over_Configs').item.json;\nconst timeIndex = loopData.time_index;\nconst subfolderIds = loopData.subfolder_ids;\nconst subfolderNames = loopData.subfolder_names;\nconst slotGroupIds = loopData.slot_group_ids_for_slot || [];\n\n// Filter only images and videos\nconst imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/jpg'];\nconst videoTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];\n\nconst mediaFiles = allFiles.filter(item => {\n  const mimeType = item.json.mimeType;\n  return imageTypes.includes(mimeType) || videoTypes.includes(mimeType);\n});\n\nif (mediaFiles.length === 0) {\n  return [{ \n    json: {\n      error: 'No media files found in subfolder',\n      config_id: loopData.config_id,\n      page_id: loopData.page_id\n    }\n  }];\n}\n\n// Sort by name for stable, predictable ordering\nmediaFiles.sort((a, b) => a.json.name.localeCompare(b.json.name));\n\nconst currentIndex = loopData.current_file_index;\nconst fileIndex = currentIndex % mediaFiles.length;\nconst selectedFile = mediaFiles[fileIndex].json;\nconst fileType = imageTypes.includes(selectedFile.mimeType) ? 'image' : 'video';\nconst nextIndex = currentIndex + 1;\n\nreturn [{ \n  json: {\n    file_id: selectedFile.id,\n    file_name: selectedFile.name,\n    file_type: fileType,\n    mime_type: selectedFile.mimeType,\n    current_index: currentIndex,\n    next_index: nextIndex,\n    total_files: mediaFiles.length,\n    config_id: loopData.config_id,\n    page_id: loopData.page_id,\n    facebook_page_id: loopData.facebook_page_id,\n    access_token: loopData.access_token,\n    time_index: timeIndex,\n    subfolder_id: subfolderIds[timeIndex],\n    subfolder_name: subfolderNames[timeIndex],\n    slot_group_ids_for_slot: slotGroupIds\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -179,7 +179,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const fileData = $('Code_Select_File_By_Index').first().json;\nconst loopData = $('Loop_Over_Configs').first().json;\n\n// Parse captions array\nlet captions = [];\nif (loopData.captions && loopData.captions !== 'null') {\n  try {\n    captions = Array.isArray(loopData.captions) ? loopData.captions : JSON.parse(loopData.captions);\n  } catch(e) {\n    captions = [];\n  }\n}\n\nconst timeIndex = fileData.time_index || 0;\nconst defaultCaption = '📸 Nouveau contenu !';\n\nlet caption;\nif (captions.length > 0 && captions[timeIndex]) {\n  caption = captions[timeIndex];\n} else {\n  caption = defaultCaption;\n}\n\nconst inputItem = $input.first();\n\nreturn [{\n  json: {\n    file_id: fileData.file_id,\n    file_name: fileData.file_name,\n    file_type: fileData.file_type,\n    mime_type: fileData.mime_type,\n    current_index: fileData.current_index,\n    next_index: fileData.next_index,\n    total_files: fileData.total_files,\n    config_id: fileData.config_id,\n    page_id: fileData.page_id,\n    facebook_page_id: loopData.facebook_page_id,\n    access_token: loopData.access_token,\n    caption: caption,\n    subfolder_id: fileData.subfolder_id,\n    subfolder_name: fileData.subfolder_name\n  },\n  binary: inputItem.binary\n}];"
+        "jsCode": "const fileData = $('Code_Select_File_By_Index').first().json;\nconst loopData = $('Loop_Over_Configs').first().json;\n\n// Parse captions array\nlet captions = [];\nif (loopData.captions && loopData.captions !== 'null') {\n  try {\n    captions = Array.isArray(loopData.captions) ? loopData.captions : JSON.parse(loopData.captions);\n  } catch(e) {\n    captions = [];\n  }\n}\n\nconst timeIndex = fileData.time_index || 0;\nconst defaultCaption = '📸 Nouveau contenu !';\n\nlet caption;\nif (captions.length > 0 && captions[timeIndex]) {\n  caption = captions[timeIndex];\n} else {\n  caption = defaultCaption;\n}\n\nconst inputItem = $input.first();\n\nreturn [{\n  json: {\n    file_id: fileData.file_id,\n    file_name: fileData.file_name,\n    file_type: fileData.file_type,\n    mime_type: fileData.mime_type,\n    current_index: fileData.current_index,\n    next_index: fileData.next_index,\n    total_files: fileData.total_files,\n    config_id: fileData.config_id,\n    page_id: fileData.page_id,\n    facebook_page_id: loopData.facebook_page_id,\n    access_token: loopData.access_token,\n    caption: caption,\n    subfolder_id: fileData.subfolder_id,\n    subfolder_name: fileData.subfolder_name,\n    slot_group_ids_for_slot: fileData.slot_group_ids_for_slot || []\n  },\n  binary: inputItem.binary\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -344,6 +344,115 @@
           "name": "Postgres_Arbitrage"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch facebook_groups rows for each group ID in slot_group_ids_for_slot\n// Returns one item per group that is active, or empty array if no groups\n\nconst prepData = $('Code: Prepare_Caption').first().json;\nconst groupIds = prepData.slot_group_ids_for_slot || [];\n\nif (groupIds.length === 0) return [];\n\n// Fetch group details from PostgREST\nconst baseUrl = 'http://207.180.232.14:3002';\nconst results = [];\n\nfor (const groupRowId of groupIds) {\n  const resp = await $http.get(`${baseUrl}/facebook_groups?id=eq.${groupRowId}&is_active=eq.true&select=id,group_id,group_name`);\n  const rows = Array.isArray(resp.data) ? resp.data : [];\n  for (const row of rows) {\n    results.push({\n      json: {\n        group_row_id: row.id,\n        facebook_group_id: row.group_id,\n        group_name: row.group_name,\n        file_id: prepData.file_id,\n        file_name: prepData.file_name,\n        file_type: prepData.file_type,\n        mime_type: prepData.mime_type,\n        caption: prepData.caption,\n        access_token: prepData.access_token\n      },\n      binary: $('Code: Prepare_Caption').first().binary\n    });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3080, -112],
+      "id": "aa000001-0000-0000-0000-000000000001",
+      "name": "Code_Prepare_Group_Posts"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "gg000001",
+              "leftValue": "={{ $json.facebook_group_id !== undefined }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [3280, -112],
+      "id": "aa000002-0000-0000-0000-000000000002",
+      "name": "IF_Has_Groups"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [{ "leftValue": "={{ $json.file_type === 'image' }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true }, "id": "gg000003" }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [{ "id": "gg000004", "leftValue": "={{ $json.file_type === 'image' }}", "rightValue": "", "operator": { "type": "boolean", "operation": "false", "singleValue": true } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Video"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [3480, -112],
+      "id": "aa000003-0000-0000-0000-000000000003",
+      "name": "Group_Image_Or_Video"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.facebook_group_id }}/photos",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{ "name": "access_token", "value": "={{ $json.access_token }}" }]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "message", "value": "={{ $json.caption }}" },
+            { "parameterType": "formBinaryData", "name": "source", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [3680, -208],
+      "id": "aa000004-0000-0000-0000-000000000004",
+      "name": "HTTP_Post_Image_To_Group"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.facebook_group_id }}/videos",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "description", "value": "={{ $json.caption }}" },
+            { "name": "access_token", "value": "={{ $json.access_token }}" },
+            { "parameterType": "formBinaryData", "name": "source", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [3680, -48],
+      "id": "aa000005-0000-0000-0000-000000000005",
+      "name": "HTTP_Post_Video_To_Group"
     }
   ],
   "connections": {
@@ -422,7 +531,27 @@
     },
     "Postgres - Log_Posted_File": {
       "main": [
-        [{ "node": "Loop_Over_Configs", "type": "main", "index": 0 }]
+        [
+          { "node": "Code_Prepare_Group_Posts", "type": "main", "index": 0 },
+          { "node": "Loop_Over_Configs", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Code_Prepare_Group_Posts": {
+      "main": [
+        [{ "node": "IF_Has_Groups", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF_Has_Groups": {
+      "main": [
+        [{ "node": "Group_Image_Or_Video", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Group_Image_Or_Video": {
+      "main": [
+        [{ "node": "HTTP_Post_Image_To_Group", "type": "main", "index": 0 }],
+        [{ "node": "HTTP_Post_Video_To_Group", "type": "main", "index": 0 }]
       ]
     }
   },
