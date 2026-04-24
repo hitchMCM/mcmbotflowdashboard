@@ -44,6 +44,17 @@ const getCurrentUserId = (): string | null => {
   return null;
 };
 
+const getCurrentUserRole = (): string | null => {
+  try {
+    const userStr = localStorage.getItem('mcm_user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      return user.role || null;
+    }
+  } catch (e) {}
+  return null;
+};
+
 export function PageProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState<Page | null>(null);
   const [pages, setPages] = useState<Page[]>([]);
@@ -73,15 +84,14 @@ export function PageProvider({ children }: { children: ReactNode }) {
     );
     
     try {
-      // Load only pages belonging to the current user
+      // Load pages: admin sees all, regular user sees only their own
       console.log('[PageContext] Starting fetch for user:', userId);
       const startTime = Date.now();
-      
-      const fetchPromise = supabase
-        .from('pages')
-        .select('*')
-        .eq('user_id', userId)
-        .order('name');
+      const isAdmin = getCurrentUserRole() === 'admin';
+
+      const fetchPromise = isAdmin
+        ? supabase.from('pages').select('*').order('name')
+        : supabase.from('pages').select('*').eq('user_id', userId).order('name');
       
       const result = await Promise.race([fetchPromise, timeoutPromise]) as any;
       console.log('[PageContext] Fetch completed in', Date.now() - startTime, 'ms');
@@ -167,12 +177,11 @@ export function PageProvider({ children }: { children: ReactNode }) {
   const silentRefresh = async () => {
     const userId = getCurrentUserId();
     if (!userId) return;
+    const isAdmin = getCurrentUserRole() === 'admin';
     try {
-      const { data, error } = await supabase
-        .from('pages')
-        .select('*')
-        .eq('user_id', userId)
-        .order('name');
+      const { data, error } = isAdmin
+        ? await supabase.from('pages').select('*').order('name')
+        : await supabase.from('pages').select('*').eq('user_id', userId).order('name');
       if (error || !data) return;
       const loadedPages: Page[] = data.map((row: any) => ({
         id: row.id,

@@ -307,13 +307,20 @@ export default function UtilityMessages() {
     try {
       const legacyData = convertMessageContentToLegacy(messageContent);
 
-      // Preserve _page_id, _facebook_page_id and _meta_template from existing messenger_payload
+      // Fetch fresh messenger_payload from DB — prevents overwriting _meta_template with stale state
+      const { data: freshRow } = await supabase
+        .from('messages')
+        .select('messenger_payload')
+        .eq('id', selectedMessage.id)
+        .single();
+      const freshPayload = (freshRow?.messenger_payload as Record<string, any>) || {};
       const existingPayload = (selectedMessage.messenger_payload as Record<string, any>) || {};
       legacyData.messenger_payload = {
         ...legacyData.messenger_payload,
-        _page_id: existingPayload._page_id || currentPage?.id || null,
-        _facebook_page_id: existingPayload._facebook_page_id || currentPage?.facebook_page_id || null,
-        _meta_template: existingPayload._meta_template || undefined,
+        _page_id: freshPayload._page_id || existingPayload._page_id || currentPage?.id || null,
+        _facebook_page_id: freshPayload._facebook_page_id || existingPayload._facebook_page_id || currentPage?.facebook_page_id || null,
+        // Use fresh DB value — Step 2 (saveTemplateResult) will overwrite with the NEW status anyway
+        _meta_template: freshPayload._meta_template || existingPayload._meta_template || undefined,
       };
 
       const saveOk = await updateMessage(selectedMessage.id, {
@@ -428,13 +435,22 @@ export default function UtilityMessages() {
     try {
       const legacyData = convertMessageContentToLegacy(messageContent);
 
-      // Preserve _page_id, _facebook_page_id and _meta_template from existing messenger_payload
+      // Always fetch fresh messenger_payload from DB to avoid overwriting _meta_template
+      // with a stale React state value (e.g. if Meta approved the template between last
+      // refetch and this save click).
+      const { data: freshRow } = await supabase
+        .from('messages')
+        .select('messenger_payload')
+        .eq('id', selectedMessage.id)
+        .single();
+      const freshPayload = (freshRow?.messenger_payload as Record<string, any>) || {};
       const existingPayload = (selectedMessage.messenger_payload as Record<string, any>) || {};
       legacyData.messenger_payload = {
         ...legacyData.messenger_payload,
-        _page_id: existingPayload._page_id || currentPage?.id || null,
-        _facebook_page_id: existingPayload._facebook_page_id || currentPage?.facebook_page_id || null,
-        _meta_template: existingPayload._meta_template || undefined,
+        _page_id: freshPayload._page_id || existingPayload._page_id || currentPage?.id || null,
+        _facebook_page_id: freshPayload._facebook_page_id || existingPayload._facebook_page_id || currentPage?.facebook_page_id || null,
+        // Use fresh DB value first — prevents overwriting APPROVED with stale PENDING
+        _meta_template: freshPayload._meta_template || existingPayload._meta_template || undefined,
       };
 
       const success = await updateMessage(selectedMessage.id, {

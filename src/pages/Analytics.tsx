@@ -103,6 +103,10 @@ export default function Analytics() {
   const { currentPage, pages } = usePage();
   const { timezone } = useSettings();
 
+  // Detect current user role
+  const currentUser = (() => { try { const s = localStorage.getItem('mcm_user'); return s ? JSON.parse(s) : null; } catch { return null; } })();
+  const isAdmin = currentUser?.role === 'admin';
+
   // Main stats
   const [stats, setStats] = useState({
     totalSubscribers: 0,
@@ -117,6 +121,7 @@ export default function Analytics() {
     avgSendsPerDay: 0,
     avgSubscribersPerDay: 0,
     engagementScore: 0,
+    sendsYesterday: 0,
     topHour: 0,
     topDay: '',
   });
@@ -133,6 +138,7 @@ export default function Analytics() {
   const [topPages, setTopPages] = useState<any[]>([]);
   const [categoryPerformance, setCategoryPerformance] = useState<any[]>([]);
   const [weeklyPattern, setWeeklyPattern] = useState<any[]>([]);
+  const [dailySendsData, setDailySendsData] = useState<any[]>([]);
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -149,17 +155,35 @@ export default function Analytics() {
         pagesRes,
         configsRes,
         messagesRes,
+        broadcastLogsRes,
       ] = await Promise.all([
-        // Get total count of subscribers
-        supabase.from('subscribers').select('id', { count: 'exact', head: true }),
-        // Get only recent 500 subscribers for display
-        supabase.from('subscribers').select('id,name_complet,subscribed_at,is_active,page_id')
-          .order('subscribed_at', { ascending: false })
-          .limit(500),
-        // Pages table has aggregated stats: total_sent, total_delivered, total_read, total_clicks
-        supabase.from('pages').select('*'),
-        supabase.from('page_configs').select('*'),
-        supabase.from('messages').select('id, name, category, sent_count, delivered_count, read_count, clicked_count, created_at, messenger_payload'),
+        // Get total count of subscribers (scoped to user's pages)
+        isAdmin
+          ? supabase.from('subscribers').select('id', { count: 'exact', head: true })
+          : supabase.from('subscribers').select('id', { count: 'exact', head: true }).in('page_id', pages.map(p => p.id).length ? pages.map(p => p.id) : ['none']),
+        // Get recent subscribers for display
+        isAdmin
+          ? supabase.from('subscribers').select('id,name_complet,subscribed_at,is_active,page_id')
+              .order('subscribed_at', { ascending: false }).limit(500)
+          : supabase.from('subscribers').select('id,name_complet,subscribed_at,is_active,page_id')
+              .in('page_id', pages.map(p => p.id).length ? pages.map(p => p.id) : ['none'])
+              .order('subscribed_at', { ascending: false }).limit(500),
+        // Pages - admin sees all, regular user sees only their own
+        isAdmin
+          ? supabase.from('pages').select('*')
+          : supabase.from('pages').select('*').eq('user_id', currentUser?.id),
+        // page_configs - admin sees all, user sees only their pages
+        isAdmin
+          ? supabase.from('page_configs').select('*')
+          : supabase.from('page_configs').select('*').in('page_id', pages.map(p => p.id).length ? pages.map(p => p.id) : ['none']),
+        // messages - admin sees all, user sees only their own
+        isAdmin
+          ? supabase.from('messages').select('id, name, category, sent_count, delivered_count, read_count, clicked_count, created_at, messenger_payload')
+          : supabase.from('messages').select('id, name, category, sent_count, delivered_count, read_count, clicked_count, created_at, messenger_payload').eq('user_id', currentUser?.id),
+        // Broadcasts with per-day send counts
+        isAdmin
+          ? supabase.from('broadcasts').select('created_at, sent_count').gte('created_at', startISO)
+          : supabase.from('broadcasts').select('created_at, sent_count').eq('user_id', currentUser?.id).gte('created_at', startISO),
       ]);
 
       // Use count for totals, recent data for display
@@ -168,6 +192,7 @@ export default function Analytics() {
       const allPages = (pagesRes.data || []) as any[];
       const configs = configsRes.data || [];
       const messages = messagesRes.data || [];
+      const broadcastsWithDates = (broadcastLogsRes.data || []) as any[];
 
       // Debug: log data fetch results
       console.log('Analytics Debug:', {
@@ -288,6 +313,28 @@ export default function Analytics() {
       });
       const topDay = Object.entries(dayCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Monday';
 
+      // Daily sends from broadcasts table (created_at + sent_count per campaign)
+      const dailySendsMap = new Map<string, number>();
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        dailySendsMap.set(key, 0);
+      }
+      broadcastsWithDates.forEach((b: any) => {
+        const key = new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (dailySendsMap.has(key)) {
+          dailySendsMap.set(key, (dailySendsMap.get(key) || 0) + (b.sent_count || 0));
+        }
+      });
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayKey = yesterday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const sendsYesterday = dailySendsMap.get(yesterdayKey) || 0;
+      setDailySendsData(
+        Array.from(dailySendsMap.entries()).map(([date, sends]) => ({ date, sends }))
+      );
+
       setStats({
         totalSubscribers,
         activeSubscribers,
@@ -301,6 +348,7 @@ export default function Analytics() {
         avgSendsPerDay,
         avgSubscribersPerDay,
         engagementScore,
+        sendsYesterday,
         topHour: parseInt(topHour),
         topDay,
       });
@@ -410,7 +458,7 @@ export default function Analytics() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, isAdmin, currentUser?.id, pages.length]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -441,8 +489,9 @@ export default function Analytics() {
       value: stats.totalSends,
       icon: Send, 
       color: "from-purple-500 to-pink-500",
-      subValue: `${stats.avgSendsPerDay}/day avg`,
+      subValue: `${stats.sendsYesterday} hier • ${stats.avgSendsPerDay}/j moy`,
       trend: stats.totalSends > 0 ? 'up' : 'neutral',
+      sparkData: dailySendsData.map(d => d.sends),
     },
     { 
       label: "Button Clicks", 
@@ -577,6 +626,71 @@ export default function Analytics() {
                   </motion.div>
                 ))}
               </div>
+
+              {/* Daily Message Sends Chart */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+              >
+                <GlassCard hover={false}>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                        <Send className="h-5 w-5 text-purple-400" />
+                        Messages envoyés par jour
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Évolution des envois • <span className="text-purple-400 font-medium">{stats.sendsYesterday} hier</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                        <span className="text-sm font-medium text-purple-400">{stats.avgSendsPerDay}/j en moyenne</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    {dailySendsData.length === 0 || dailySendsData.every(d => d.sends === 0) ? (
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                        <Send className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm">Aucun envoi enregistré dans les logs pour cette période</p>
+                        <p className="text-xs mt-1 opacity-60">Les envois apparaîtront ici au fur et à mesure</p>
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={dailySendsData}>
+                          <defs>
+                            <linearGradient id="sendsGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={11} interval="preserveStartEnd" />
+                          <YAxis stroke="rgba(255,255,255,0.5)" fontSize={11} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Area
+                            type="monotone"
+                            dataKey="sends"
+                            stroke="#8b5cf6"
+                            fill="url(#sendsGradient)"
+                            strokeWidth={2}
+                            name="Envois"
+                          />
+                          <Bar
+                            dataKey="sends"
+                            fill="#8b5cf6"
+                            fillOpacity={0.3}
+                            radius={[4, 4, 0, 0]}
+                            name="Envois"
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </GlassCard>
+              </motion.div>
 
               {/* Main Charts Row */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1068,6 +1182,41 @@ export default function Analytics() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <GlassCard hover={false}>
                   <h3 className="font-display font-semibold text-lg mb-4 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-purple-400" />
+                    Envois par jour
+                  </h3>
+                  <div className="h-72">
+                    {dailySendsData.length === 0 || dailySendsData.every(d => d.sends === 0) ? (
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                        <Send className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm">Aucun envoi dans les logs pour cette période</p>
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={dailySendsData}>
+                          <defs>
+                            <linearGradient id="msgDailyGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                              <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={11} interval="preserveStartEnd" />
+                          <YAxis stroke="rgba(255,255,255,0.5)" fontSize={11} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Area type="monotone" dataKey="sends" stroke="#8b5cf6" fill="url(#msgDailyGradient)" strokeWidth={2} name="Envois" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                  <div className="mt-4 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Hier</span>
+                    <span className="text-lg font-bold text-purple-400">{stats.sendsYesterday} envois</span>
+                  </div>
+                </GlassCard>
+
+                <GlassCard hover={false}>
+                  <h3 className="font-display font-semibold text-lg mb-4 flex items-center gap-2">
                     <Send className="h-5 w-5 text-purple-400" />
                     Sends Distribution
                   </h3>
@@ -1092,8 +1241,9 @@ export default function Analytics() {
                     </ResponsiveContainer>
                   </div>
                 </GlassCard>
+              </div>
 
-                <GlassCard hover={false}>
+              <GlassCard hover={false}>
                   <h3 className="font-display font-semibold text-lg mb-4 flex items-center gap-2">
                     <MousePointer className="h-5 w-5 text-orange-400" />
                     Top Button Clicks
@@ -1135,7 +1285,6 @@ export default function Analytics() {
                     )}
                   </ScrollArea>
                 </GlassCard>
-              </div>
             </motion.div>
           )}
 

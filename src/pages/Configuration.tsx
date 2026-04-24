@@ -419,10 +419,11 @@ export default function Configuration() {
       let scheduledTimeToSave: string | null = null;
       let scheduledTimesToSave: string[] | null = null;
       if ((category === 'broadcast' || category === 'utility') && delayHoursToSave.length > 0) {
-        // Convert all times to TIME format array
+        // Convert all times to TIME format array — normalize to 0-1439 min first to avoid out-of-range
         scheduledTimesToSave = delayHoursToSave.map(m => {
-          const hours = Math.floor(m / 60);
-          const minutes = m % 60;
+          const safe = ((m % 1440) + 1440) % 1440; // clamp to [0, 1439]
+          const hours = Math.floor(safe / 60);
+          const minutes = safe % 60;
           return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
         });
         // Keep first time in scheduled_time for backward compatibility
@@ -526,27 +527,41 @@ export default function Configuration() {
       // Exclude utility category — each page has its own Meta-approved templates
       const configsToClone = sourceConfigs.filter(c => c.category !== 'utility');
 
-      const newConfigs = configsToClone.map(config => ({
-        page_id: currentPage.id,
-        category: config.category,
-        name: config.name,
-        // selected_message_ids intentionally cleared: message IDs belong to the source page, not this one
-        selected_message_ids: [],
-        selection_mode: config.selection_mode,
-        fixed_message_id: null,
-        messages_count: config.messages_count,
-        delay_seconds: config.delay_seconds ?? 0,
-        reset_period_hours: config.reset_period_hours ?? 24,
-        delay_hours: [...(config.delay_hours || [])],
-        scheduled_time: config.scheduled_time,
-        scheduled_times: config.scheduled_times ? [...config.scheduled_times] : null,
-        scheduled_date: config.scheduled_date,
-        trigger_keywords: [...(config.trigger_keywords || [])],
-        is_enabled: config.is_enabled,
-        ai_prompt: (config as any).ai_prompt || null,
-        ai_links: (config as any).ai_links || [],
-        ai_images: (config as any).ai_images || [],
-      }));
+      const newConfigs = configsToClone.map(config => {
+        // For broadcast/utility, recompute scheduled_time/scheduled_times from delay_hours
+        // to avoid carrying over out-of-range values that would cause Postgres TIME errors
+        let scheduledTime = config.scheduled_time as string | null;
+        let scheduledTimes = config.scheduled_times ? [...(config.scheduled_times as string[])] : null;
+        if ((config.category === 'broadcast' || config.category === 'utility') && (config.delay_hours || []).length > 0) {
+          scheduledTimes = (config.delay_hours as number[]).map(m => {
+            const safe = ((m % 1440) + 1440) % 1440;
+            const h = Math.floor(safe / 60);
+            const min = safe % 60;
+            return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:00`;
+          });
+          scheduledTime = scheduledTimes[0];
+        }
+        return {
+          page_id: currentPage.id,
+          category: config.category,
+          name: config.name,
+          selected_message_ids: [...(config.selected_message_ids || [])],
+          selection_mode: config.selection_mode,
+          fixed_message_id: config.fixed_message_id ?? null,
+          messages_count: config.messages_count,
+          delay_seconds: config.delay_seconds ?? 0,
+          reset_period_hours: config.reset_period_hours ?? 24,
+          delay_hours: [...(config.delay_hours || [])],
+          scheduled_time: scheduledTime,
+          scheduled_times: scheduledTimes,
+          scheduled_date: config.scheduled_date,
+          trigger_keywords: [...(config.trigger_keywords || [])],
+          is_enabled: config.is_enabled,
+          ai_prompt: (config as any).ai_prompt || null,
+          ai_links: (config as any).ai_links || [],
+          ai_images: (config as any).ai_images || [],
+        };
+      });
       
       console.log('[Configuration] New configs to insert:', newConfigs.map(c => ({ page_id: c.page_id, category: c.category, selected_message_ids: c.selected_message_ids })));
 
@@ -576,9 +591,10 @@ export default function Configuration() {
 
       // Find source page name for success message
       const sourcePage = pages.find(p => p.id === cloneFromPageId);
+      const totalMsgIds = newConfigs.reduce((sum, c) => sum + (c.selected_message_ids?.length || 0), 0);
       toast({
         title: "✅ Configuration cloned!",
-        description: `${newConfigs.length} configuration(s) cloned from "${sourcePage?.name || 'source page'}"`
+        description: `${newConfigs.length} config(s) cloned from "${sourcePage?.name || 'source page'}" — ${totalMsgIds} message(s) included`
       });
 
       setShowCloneDialog(false);
@@ -1226,7 +1242,7 @@ export default function Configuration() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                This will copy all message configurations including welcome, response, sequence, broadcast settings, selected messages, and scheduling.
+                This will copy all trigger settings (mode, schedule, keywords, delays) and selected messages. Utility templates are excluded (each page has its own Meta-approved templates).
               </p>
             </div>
           </div>
