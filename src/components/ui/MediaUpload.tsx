@@ -1,84 +1,10 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload, X, Image as ImageIcon, Film, Loader2, Link2, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Cloudinary configuration
-const CLOUDINARY_CLOUD_NAME = "dwbxr1s5l";
-const CLOUDINARY_UPLOAD_PRESET = "mcm_botflow"; // Unsigned preset - needs to be created in Cloudinary
-
-// Extend window type for Cloudinary
-declare global {
-  interface Window {
-    cloudinary?: {
-      createUploadWidget: (
-        options: CloudinaryUploadOptions,
-        callback: (error: any, result: CloudinaryUploadResult) => void
-      ) => CloudinaryWidget;
-    };
-  }
-}
-
-interface CloudinaryUploadOptions {
-  cloudName: string;
-  uploadPreset: string;
-  sources?: string[];
-  multiple?: boolean;
-  maxFiles?: number;
-  cropping?: boolean;
-  croppingAspectRatio?: number;
-  croppingShowDimensions?: boolean;
-  croppingValidateDimensions?: boolean;
-  minImageWidth?: number;
-  minImageHeight?: number;
-  maxImageWidth?: number;
-  maxImageHeight?: number;
-  maxVideoFileSize?: number;
-  clientAllowedFormats?: string[];
-  resourceType?: string;
-  folder?: string;
-  tags?: string[];
-  styles?: {
-    palette?: {
-      window?: string;
-      windowBorder?: string;
-      tabIcon?: string;
-      menuIcons?: string;
-      textDark?: string;
-      textLight?: string;
-      link?: string;
-      action?: string;
-      inactiveTabIcon?: string;
-      error?: string;
-      inProgress?: string;
-      complete?: string;
-      sourceBg?: string;
-    };
-  };
-}
-
-interface CloudinaryUploadResult {
-  event: string;
-  info?: {
-    secure_url: string;
-    public_id: string;
-    width: number;
-    height: number;
-    format: string;
-    resource_type: string;
-    created_at: string;
-    bytes: number;
-    thumbnail_url?: string;
-    duration?: number; // For videos
-  };
-}
-
-interface CloudinaryWidget {
-  open: () => void;
-  close: () => void;
-  destroy: () => void;
-}
+const VPS_UPLOAD_URL = "/upload";
 
 type MediaType = "image" | "video";
 
@@ -89,30 +15,12 @@ interface MediaUploadProps {
   aspectRatio?: number;
   minWidth?: number;
   minHeight?: number;
-  maxVideoSize?: number; // in MB
+  maxVideoSize?: number;
   placeholder?: string;
   className?: string;
   showPreview?: boolean;
   label?: string;
 }
-
-const DARK_THEME_STYLES = {
-  palette: {
-    window: "#1a1a2e",
-    windowBorder: "#6366f1",
-    tabIcon: "#ffffff",
-    menuIcons: "#ffffff",
-    textDark: "#000000",
-    textLight: "#ffffff",
-    link: "#6366f1",
-    action: "#6366f1",
-    inactiveTabIcon: "#6b7280",
-    error: "#ef4444",
-    inProgress: "#6366f1",
-    complete: "#22c55e",
-    sourceBg: "#0f0f23",
-  },
-};
 
 export function MediaUpload({
   value,
@@ -121,91 +29,55 @@ export function MediaUpload({
   aspectRatio = 1.91,
   minWidth = 1200,
   minHeight = 628,
-  maxVideoSize = 25, // 25MB default for Facebook
+  maxVideoSize = 25,
   placeholder,
   className,
   showPreview = true,
   label,
 }: MediaUploadProps) {
-  const widgetRef = useRef<CloudinaryWidget | null>(null);
-  const onChangeRef = useRef(onChange);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Keep onChange ref up to date
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
+  const isVideo = mediaType === "video";
+  const Icon = isVideo ? Film : ImageIcon;
+  const defaultPlaceholder = isVideo
+    ? "https://example.com/video.mp4"
+    : "https://example.com/image.jpg";
 
-  useEffect(() => {
-    if (!window.cloudinary) {
-      console.warn("Cloudinary widget not loaded");
-      return;
-    }
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const isVideo = mediaType === "video";
+    setIsLoading(true);
+    setUploadError(null);
 
-    // Widget options based on media type
-    const options: CloudinaryUploadOptions = {
-      cloudName: CLOUDINARY_CLOUD_NAME,
-      uploadPreset: CLOUDINARY_UPLOAD_PRESET,
-      sources: ["local", "url", "camera"],
-      multiple: false,
-      maxFiles: 1,
-      resourceType: isVideo ? "video" : "image",
-      folder: "mcm-botflow",
-      tags: ["mcm-botflow", isVideo ? "message-video" : "message-image"],
-      styles: DARK_THEME_STYLES,
-      clientAllowedFormats: isVideo 
-        ? ["mp4", "mov", "avi", "webm", "mkv"]
-        : ["png", "jpg", "jpeg", "gif", "webp"],
-    };
+    const formData = new FormData();
+    formData.append("file", file);
 
-    // Add image-specific options
-    if (!isVideo) {
-      // NO FORCED CROPPING - accept any image size/ratio
-      // User can upload images as-is without modification
-      options.cropping = false;
-    } else {
-      // Video-specific options
-      options.maxVideoFileSize = maxVideoSize * 1024 * 1024; // Convert MB to bytes
-    }
-
-    // Create the upload widget
-    widgetRef.current = window.cloudinary.createUploadWidget(
-      options,
-      (error, result) => {
-        if (error) {
-          console.error("Upload error:", error);
-          setIsLoading(false);
-          return;
-        }
-
-        if (result.event === "success" && result.info) {
-          onChangeRef.current(result.info.secure_url);
-          setIsLoading(false);
-        }
-
-        if (result.event === "close") {
-          setIsLoading(false);
-        }
+    try {
+      const res = await fetch(VPS_UPLOAD_URL, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
       }
-    );
-
-    return () => {
-      widgetRef.current?.destroy();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaType, aspectRatio, minWidth, minHeight, maxVideoSize]);
-
-  const handleOpenWidget = () => {
-    if (widgetRef.current) {
-      setIsLoading(true);
-      widgetRef.current.open();
-    } else {
-      setShowUrlInput(true);
+      const data = await res.json();
+      if (!data.url) throw new Error("No URL returned from server");
+      onChange(data.url);
+    } catch (err: any) {
+      setUploadError(err.message ?? "Upload error");
+    } finally {
+      setIsLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const handleOpenFilePicker = () => {
+    fileInputRef.current?.click();
   };
 
   const handleUrlSubmit = () => {
@@ -218,14 +90,8 @@ export function MediaUpload({
 
   const handleClear = () => {
     onChange("");
+    setUploadError(null);
   };
-
-  const isVideo = mediaType === "video";
-  const Icon = isVideo ? Film : ImageIcon;
-  const uploadLabel = isVideo ? "Upload Video" : "Upload Image";
-  const defaultPlaceholder = isVideo 
-    ? "https://example.com/video.mp4" 
-    : "https://example.com/image.jpg";
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -235,6 +101,19 @@ export function MediaUpload({
           {label}
         </label>
       )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept={
+          isVideo
+            ? "video/mp4,video/quicktime,video/x-msvideo,video/webm,video/x-matroska"
+            : "image/png,image/jpeg,image/gif,image/webp"
+        }
+        onChange={handleFileChange}
+      />
 
       {/* Preview */}
       {showPreview && value && (
@@ -269,7 +148,7 @@ export function MediaUpload({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={handleOpenWidget}
+              onClick={handleOpenFilePicker}
             >
               <Upload className="h-4 w-4 mr-1" />
               Change
@@ -303,9 +182,9 @@ export function MediaUpload({
               type="button"
               variant="outline"
               className="border-white/20"
-              onClick={handleOpenWidget}
+              onClick={handleOpenFilePicker}
               disabled={isLoading}
-              title="Upload via Cloudinary"
+              title="Upload vers VPS"
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -314,6 +193,9 @@ export function MediaUpload({
               )}
             </Button>
           </div>
+          {uploadError && (
+            <p className="text-xs text-red-400">{uploadError}</p>
+          )}
         </div>
       )}
 
@@ -339,7 +221,7 @@ export function MediaUpload({
       {/* Small info text */}
       {!value && !showUrlInput && (
         <p className="text-xs text-muted-foreground">
-          {isVideo 
+          {isVideo
             ? `Max ${maxVideoSize}MB. Supported: MP4, MOV, AVI, WebM`
             : `Recommended: ${minWidth}x${minHeight}px minimum, ${aspectRatio}:1 ratio`
           }

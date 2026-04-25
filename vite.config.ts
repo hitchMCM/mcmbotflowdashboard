@@ -163,6 +163,11 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/upload': {
+        target: 'https://vmi3040053.contaboserver.net',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
   plugins: [react(), metaUploadProxy()],

@@ -16,6 +16,13 @@
   status = 200
   force = true
 
+# Proxy /upload to VPS image upload endpoint (avoids CORS)
+[[redirects]]
+  from = "/upload"
+  to = "https://vmi3040053.contaboserver.net/upload"
+  status = 200
+  force = true
+
 # Redirect all routes to index.html for SPA (React Router)
 [[redirects]]
   from = "/*"

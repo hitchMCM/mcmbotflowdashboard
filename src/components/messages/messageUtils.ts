@@ -59,7 +59,7 @@ export function generateMessengerPayload(content: MessageContent): any {
         const element: any = {
           title: elem.title || undefined,
           subtitle: elem.subtitle || undefined,
-          image_url: elem.image_url || undefined,
+          image_url: elem.image_url ? elem.image_url : undefined,
           buttons: processButtons(elem.buttons)
         };
         // Only add default_action if it has a valid URL
@@ -124,7 +124,7 @@ export function generateMessengerPayload(content: MessageContent): any {
               const element: any = {
                 title: elem.title || undefined,
                 subtitle: elem.subtitle || undefined,
-                image_url: elem.image_url || undefined,
+                image_url: elem.image_url ? elem.image_url : undefined,
                 buttons: processButtons(elem.buttons)
               };
               // Only add default_action if it has a valid URL
