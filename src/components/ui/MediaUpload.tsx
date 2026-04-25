@@ -57,9 +57,12 @@ export function MediaUpload({
     const formData = new FormData();
     formData.append("file", file);
 
+    const apiKey = import.meta.env.VITE_UPLOAD_API_KEY as string | undefined;
+
     try {
       const res = await fetch(VPS_UPLOAD_URL, {
         method: "POST",
+        headers: apiKey ? { "x-api-key": apiKey } : {},
         body: formData,
       });
       if (!res.ok) {
