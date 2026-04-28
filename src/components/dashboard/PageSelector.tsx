@@ -85,7 +85,7 @@ export function PageSelector() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent 
-        className="w-[250px] bg-background/95 backdrop-blur-xl border-white/10" 
+        className="w-[250px] bg-background/95 backdrop-blur-xl border-white/10 max-h-72 overflow-y-auto" 
         align="start"
       >
         <AnimatePresence>

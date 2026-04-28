@@ -100,7 +100,7 @@ export function Sidebar() {
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </div>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56 glass border-white/10">
+          <DropdownMenuContent className="w-56 glass border-white/10 max-h-72 overflow-y-auto">
             {pages.map((page) => (
               <DropdownMenuItem
                 key={page.id}
